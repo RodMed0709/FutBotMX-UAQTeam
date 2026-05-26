@@ -1,0 +1,62 @@
+Plaintext
+
+# ===================================================
+# .gitignore - Proyecto Copa FutBotMX
+# ===================================================
+
+# 1. Variables de Entorno
+.env
+.env.*
+*.pem
+secrets/
+
+# 2. Datos y Videos (Pesados)
+# (necesitarás poner un archivo vacío llamado .gitkeep en estas carpetas)
+data/raw/*
+data/interim/*
+data/processed/*
+!data/**/.gitkeep
+*.mp4
+*.avi
+*.mov
+
+# 3. Modelos de Machine Learning y Pesos
+models/weights/
+*.pt
+*.pth
+*.onnx
+*.engine
+*.safetensors
+
+# 4. Resultados, Logs y Tracking de Experimentos
+outputs/
+experiments/
+logs/
+*.log
+wandb/
+mlruns/
+
+# 5. Entornos Virtuales de Python
+venv/
+env/
+.venv/
+miniforge3/
+anaconda3/
+
+# 6. Python, Caché y Compilados
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+build/
+dist/
+*.egg-info/
+
+# 7. Jupyter Notebooks y Colab
+.ipynb_checkpoints/
+notebooks/temp_* # 8. Archivos del Sistema Operativo e IDEs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
