@@ -27,11 +27,15 @@ Meta_Glasses/
 
 # 3. Modelos de Machine Learning y Pesos
 models/weights/
+assets/sam3/
+assets/sam3.1/
+assets/checkpoints/
 *.pt
 *.pth
 *.onnx
 *.engine
 *.safetensors
+*.bin
 
 # 4. Resultados, Logs y Tracking de Experimentos
 outputs/
