@@ -10,7 +10,7 @@ secrets/
 
 # 2. Datos y Videos (Pesados)
 # (necesitarás poner un archivo vacío llamado .gitkeep en estas carpetas)
-data/raw/*
+data/raw
 data/interim/*
 data/processed/*
 data/external/*
