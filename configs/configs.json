@@ -1,5 +1,9 @@
 {
   "io":{
     "sample_frames":10
+  },
+  "model":{
+    "sam3_path": "assets/sam3",
+    "prompts":["robot","orange ball","green floor"]
   }
 }
