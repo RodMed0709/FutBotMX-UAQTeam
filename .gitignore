@@ -39,6 +39,7 @@ assets/checkpoints/
 
 # 4. Resultados, Logs y Tracking de Experimentos
 outputs/
+notebooks/**/outputs/
 experiments/
 logs/
 *.log
