@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 sys.path.append(os.path.join(os.path.dirname(__file__), "core"))
 
 from core.io import FrameGenerator
+from core.detector import ZeroShotDetector
 
 
 logging.basicConfig(
@@ -79,6 +80,16 @@ def main():
             generator = FrameGenerator(
                 video_path=video_path, sample_frames=frames_to_process
             )
+
+            sam3_path = config.get("model", {}).get("sam3_path", "assets/sam3")
+            prompts = config.get("model", {}).get(
+                "prompts", ["robot", "orange ball", "green floor"]
+            )
+            logger.info("Initializing SAM 3 ZeroShotDetector...")
+            detector = ZeroShotDetector(model_path=sam3_path)
+
+            detector.load_model()
+
         except Exception as e:
             logger.error(f"Error in I/O Initialization: {e}")
             sys.exit(1)
@@ -91,6 +102,16 @@ def main():
             logger.info(
                 f"Retrieved frame: {frame_idx:04d} | Resolution:{width}x{height} | Channels: {channels}"
             )
+
+            try:
+                detections = detector.predict_zero_shot(frame_rgb, prompts)
+
+                logger.info(
+                    f"   -> Found {len(detections)} object masks in frame {frame_idx:04d}"
+                )
+
+            except Exception as e:
+                logger.error(f"Inference failed at frame {frame_idx:04d}: {e}")
 
         logger.info("Config-Driven FrameGenerator Test successfully finished")
 
