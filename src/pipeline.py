@@ -8,10 +8,8 @@ import random
 from pathlib import Path
 from dotenv import load_dotenv
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "core"))
-
-from core.io import FrameGenerator
-from core.detector import ZeroShotDetector
+from src.core.io import FrameGenerator
+from src.core.detector import ZeroShotDetector
 
 
 logging.basicConfig(
