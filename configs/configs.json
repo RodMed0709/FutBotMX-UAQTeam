@@ -1,5 +1,6 @@
 {
   "io":{
+    "data_path":"data/raw",
     "sample_frames":10
   },
   "model":{

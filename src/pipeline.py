@@ -6,10 +6,10 @@ import sys
 import random
 
 from pathlib import Path
-from dotenv import load_dotenv
 
 from src.core.io import FrameGenerator
 from src.core.detector import ZeroShotDetector
+from src.core.utils import get_abs_path
 
 
 logging.basicConfig(
@@ -35,7 +35,7 @@ def parse_args():
 
 def get_random_video(dataset_root: str) -> str:
     """Searches for video files recursively and returns one at random."""
-    root_path = Path(dataset_root)
+    root_path = get_abs_path(dataset_root)
     if not root_path.exists():
         raise FileNotFoundError(f"The data directory does not exist: {dataset_root}")
 
@@ -55,25 +55,26 @@ def get_random_video(dataset_root: str) -> str:
 
 
 def main():
-    # 1. Load env and config args
-    load_dotenv()
-    dataset_root = os.getenv("DATASET_ROOT", "data/raw")
-
+    # 1. Load configuration from  args
+    # dataset_root = os.getenv("DATASET_ROOT", "data/raw")
     args = parse_args()
     logger.info(f"Initialising experiment with configuration: {args.config}")
 
+    CONFIG_PATH = get_abs_path(args.config)
+
     # 2. Load configuration json files
-    if not os.path.exists(args.config):
-        logger.error(f"Configuration file not found: {args.config}")
+    if not os.path.exists(CONFIG_PATH):
+        logger.error(f"Configuration file not found: {CONFIG_PATH}")
         sys.exit(1)
 
-    with open(args.config, "r") as f:
+    with open(CONFIG_PATH, "r") as f:
         config = json.load(f)
 
         try:
             # 3. Select sample video and FrameGenerator configuration
-            video_path = get_random_video(dataset_root)
+            dataset_root = config.get("model", {}).get("data_path", "data/raw")
             frames_to_process = config.get("io", {}).get("sample_frames", None)
+            video_path = get_random_video(dataset_root)
 
             generator = FrameGenerator(
                 video_path=video_path, sample_frames=frames_to_process

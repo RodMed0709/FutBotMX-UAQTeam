@@ -4,6 +4,7 @@ import torch
 import numpy as np
 from PIL import Image
 from transformers import AutoProcessor, AutoModel
+from .utils import get_abs_path
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,7 @@ class ZeroShotDetector:
     """
 
     def __init__(self, model_path: str):
-        self.model_path = model_path
+        self.model_path = get_abs_path(model_path)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.procesor = None
