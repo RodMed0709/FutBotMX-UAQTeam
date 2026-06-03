@@ -74,43 +74,51 @@ def _load_frame_quota() -> int:
 
 
 def _resolve_video_path(video_path: Path) -> Path:
-    """Verifica la ruta del video reutilizando get_abs_path.
+    """Verifica la ruta del video y devuelve su ruta absoluta verificada.
 
-    get_abs_path espera una ruta relativa (str) respecto a PROJECT_ROOT y verifica
-    que exista. Se convierte ``video_path`` a relativa antes de delegar, sin
-    resolver symlinks: los videos viven bajo ``dataset_dir`` (p. ej. data/raw),
-    que es un symlink que apunta fuera del proyecto (montaje del contenedor), por
-    lo que la resolucion y la verificacion de existencia las hace get_abs_path.
+    Acepta dos tipos de ruta:
+
+    - **Ruta relativa** (respecto a PROJECT_ROOT): se delega en ``get_abs_path``,
+      que la resuelve contra la raiz del proyecto y verifica su existencia. Es el
+      camino para los videos que viven bajo ``dataset_dir`` (p. ej. data/raw).
+    - **Ruta absoluta**: se acepta siempre que apunte a un **archivo existente y
+      valido**, sin exigir que este bajo PROJECT_ROOT. Esto habilita videos
+      ubicados en montajes o ubicaciones externas al proyecto. ``Path.is_file()``
+      cubre a la vez "existe" y "es archivo" (un directorio se rechaza) y sigue
+      symlinks cuyo destino exista.
+
+    La validez del contenido como video no se comprueba aqui; la determina la capa
+    de lectura (decord) al abrir el archivo.
 
     Raises:
-        ValueError: si la ruta absoluta no esta bajo PROJECT_ROOT (o entrada
-            invalida).
-        FileNotFoundError: si la ruta resuelta no existe.
+        ValueError: si ``video_path`` no es de tipo Path.
+        FileNotFoundError: si una ruta relativa no resuelve (via get_abs_path), o
+            si una ruta absoluta no existe o no es un archivo.
     """
     if not isinstance(video_path, Path):
         raise ValueError(
             f"Se esperaba una ruta de tipo Path, se recibio: {type(video_path).__name__}"
         )
 
-    if video_path.is_absolute():
-        try:
-            relative = video_path.relative_to(PROJECT_ROOT)
-        except ValueError as exc:
-            raise ValueError(
-                f"La ruta del video debe estar dentro del proyecto ({PROJECT_ROOT}); "
-                f"se recibio: {video_path}"
-            ) from exc
-    else:
-        relative = video_path
+    if not video_path.is_absolute():
+        return get_abs_path(str(video_path))
 
-    return get_abs_path(str(relative))
+    if not video_path.is_file():
+        raise FileNotFoundError(
+            f"La ruta del video no existe o no es un archivo: {video_path}"
+        )
+
+    return video_path.resolve()
 
 
 def extract_frames(video_path: Path, all_frames: bool = False) -> np.ndarray:
     """Extrae frames de un video como un arreglo de NumPy.
 
     Args:
-        video_path: ruta del video (Path), dentro del proyecto.
+        video_path: ruta del video (Path). Puede ser **relativa** a PROJECT_ROOT
+            (se resuelve contra la raiz del proyecto) o **absoluta** a un archivo
+            valido en cualquier ubicacion del sistema, incluso fuera del proyecto
+            (p. ej. montajes o ubicaciones externas).
         all_frames: si es True, devuelve todos los frames disponibles; si es
             False (por defecto), devuelve una cuota de frames repartidos de forma
             uniforme en el tiempo. La cuota proviene de la configuracion.
@@ -119,9 +127,9 @@ def extract_frames(video_path: Path, all_frames: bool = False) -> np.ndarray:
         np.ndarray con forma ``(N, H, W, 3)`` (frames RGB) en memoria.
 
     Raises:
-        ValueError: entrada invalida (ruta fuera del proyecto, CONFIG_FILENAME
+        ValueError: entrada invalida (video_path no es Path, CONFIG_FILENAME
             ausente o cuota invalida).
-        FileNotFoundError: si la ruta del video no existe.
+        FileNotFoundError: si la ruta del video no existe o no es un archivo.
         KeyError: si falta la cuota en la configuracion (modo cuota).
     """
     abs_path = _resolve_video_path(video_path)
