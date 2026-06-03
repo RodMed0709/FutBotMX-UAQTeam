@@ -27,7 +27,7 @@ Meta_Glasses/
 
 # 3. Modelos de Machine Learning y Pesos
 models/weights/
-assets/sam3/
+assets/sam3
 assets/sam3.1/
 assets/checkpoints/
 *.pt
@@ -85,3 +85,6 @@ setup_venv.sh
 # 10. Jupyter token / passwords
 .jupyter_token
 jupyter_server_config.json
+
+# 11. Borradores de specs (no versionar; constitucion)
+.specs/drafts/

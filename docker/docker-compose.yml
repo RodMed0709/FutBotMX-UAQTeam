@@ -1,0 +1,49 @@
+# ===================================================
+# docker-compose.yml - Proyecto Copa FutBotMX (env_setup)
+#
+# Las rutas relativas se resuelven respecto a ESTE archivo (docker/).
+# La sustitucion de variables ${...} se lee del archivo .env indicado al
+# ejecutar el comando. Levanta desde la raiz del proyecto con:
+#
+#   docker compose --env-file .env -f docker/docker-compose.yml up --build
+#
+# Completa antes HOST_DATA_DIR y HOST_SAM3_DIR en el .env.
+# ===================================================
+
+services:
+  futbotmx26:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        CONTAINER_WORKSPACE_DIR: ${CONTAINER_WORKSPACE_DIR:-futbot}
+        # Para pods con GPU, descomenta y ajusta el indice de torch:
+        # TORCH_INDEX_URL: https://download.pytorch.org/whl/cu128
+    image: futbotmx26:latest
+    working_dir: /${CONTAINER_WORKSPACE_DIR:-futbot}
+    # Variables de entorno del contenedor (relativo a docker/ -> .env de la raiz).
+    env_file:
+      - ../.env
+    volumes:
+      # Workspace de la aplicacion (nombre configurable, no fijo en /app).
+      - ../:/${CONTAINER_WORKSPACE_DIR:-futbot}
+      # Datos pesados montados DIRECTAMENTE sobre la ruta del proyecto.
+      # Estos montajes se aplican ENCIMA del bind-mount del repo (lo sombrean),
+      # sin modificar el filesystem del host: data/raw <- HOST_DATA_DIR,
+      # assets/sam3 <- HOST_SAM3_DIR.
+      - ${HOST_DATA_DIR}:/${CONTAINER_WORKSPACE_DIR:-futbot}/data/raw
+      - ${HOST_SAM3_DIR}:/${CONTAINER_WORKSPACE_DIR:-futbot}/assets/sam3
+    stdin_open: true
+    tty: true
+    # Mantiene el contenedor vivo para ejecutar pruebas con `exec`.
+    # Los datos pesados llegan por montaje directo (ver `volumes`); ya NO se
+    # crean symlinks en el arranque.
+    command:
+      - sh
+      - -c
+      - exec tail -f /dev/null
+    ports:
+      - "8888:8888" # puerto para jupyter lab/notebooks
+    
+    # GPU (RunPod / NVIDIA local). Descomenta para exponer las GPUs:
+    # gpus: all

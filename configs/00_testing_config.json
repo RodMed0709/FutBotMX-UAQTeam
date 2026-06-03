@@ -1,0 +1,10 @@
+{
+  "working_dirs":{
+    "dataset_dir":"data/raw",
+    "sam3_dir":"assets/sam3"
+  },
+  "preprocess":{
+    "fps":"1",
+    "frame_quota":30
+  }
+}
