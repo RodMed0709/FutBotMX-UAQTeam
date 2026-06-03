@@ -1,0 +1,90 @@
+# ===================================================
+# .gitignore - Proyecto Copa FutBotMX
+# ===================================================
+
+# 1. Variables de Entorno
+.env
+.env.*
+*.pem
+secrets/
+
+# 2. Datos y Videos (Pesados)
+# (necesitarás poner un archivo vacío llamado .gitkeep en estas carpetas)
+data/raw
+data/interim/*
+data/processed/*
+data/external/*
+!data/**/.gitkeep
+Meta_Glasses/
+*.mp4
+*.MP4
+*.avi
+*.AVI
+*.mov
+*.MOV
+*.mkv
+*.MKV
+
+# 3. Modelos de Machine Learning y Pesos
+models/weights/
+assets/sam3/
+assets/sam3.1/
+assets/checkpoints/
+*.pt
+*.pth
+*.onnx
+*.engine
+*.safetensors
+*.bin
+
+# 4. Resultados, Logs y Tracking de Experimentos
+outputs/
+notebooks/**/outputs/
+experiments/
+logs/
+*.log
+wandb/
+mlruns/
+
+# 5. Entornos Virtuales de Python
+venv/
+env/
+.venv/
+envs/
+miniforge3/
+anaconda3/
+.pip-cache/
+
+# 6. Python, Caché y Compilados
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+build/
+dist/
+*.egg-info/
+
+# 7. Jupyter Notebooks y Colab
+.ipynb_checkpoints/
+notebooks/temp_* # 8. Archivos del Sistema Operativo e IDEs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 9. RunPod / configs locales
+.runpod/
+*.runpod
+start_jupyter.sh
+setup_venv.sh
+
+# 10. Jupyter token / passwords
+.jupyter_token
+jupyter_server_config.json
+
+# 11. Borradores de specs (no versionar; constitucion)
+.specs/drafts/
