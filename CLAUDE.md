@@ -97,11 +97,13 @@ This is the literal protocol from constitution §8. Work and documents are in **
 - Docker is intentionally simple: `docker/Dockerfile` + `docker/docker-compose.yml`,
   service name **`futbotmx26`**, prepared to run on RunPod. No custom entrypoints,
   no remote image registry. Three volumes map host paths from `.env`:
-  app → `/${CONTAINER_WORKSPACE_DIR}`, `${HOST_DATA_DIR}` → `/Meta_Glasses`,
-  `${HOST_SAM3_DIR}` → `/sam3`.
-- Heavy data is reached via symlinks created at container **startup** (not build —
-  the app bind-mount would hide build-time symlinks): `data/raw → /Meta_Glasses`,
-  `assets/sam3 → /sam3`.
+  app → `/${CONTAINER_WORKSPACE_DIR}`, plus the heavy data mounted **directly**
+  onto the project paths — `${HOST_DATA_DIR}` → `/${CONTAINER_WORKSPACE_DIR}/data/raw`
+  and `${HOST_SAM3_DIR}` → `/${CONTAINER_WORKSPACE_DIR}/assets/sam3`.
+- These two data mounts are layered **on top of** the app bind-mount, so they
+  **shadow** whatever is at `data/raw`/`assets/sam3` in the host checkout without
+  touching the host filesystem. No symlinks are created at startup anymore; the
+  `command` only keeps the container alive.
 
 ### Running the test scripts
 
@@ -109,32 +111,42 @@ This is the literal protocol from constitution §8. Work and documents are in **
 ```bash
 python testing/test_env.py             # imports + versions + torch.cuda check
 python testing/test_abs_dir_func.py    # exercises get_abs_path against the configs
-python testing/test_frame_extraction.py  # extract_frames on a real .MOV (container only)
+python testing/test_frame_extraction.py  # extract_frames on a real .MOV
 ```
-`test_frame_extraction.py` needs the mounted videos, so run it **inside the
-container** (the host symlinks are dead).
+`test_frame_extraction.py` needs the videos. It runs **in the container** (mounted
+volume) and also **locally** if the host has the data under `data/raw` (Case A:
+real dir, or Case B: symlink to an external path — see the gotcha below).
 In the container, run them after `up`:
 ```bash
 docker compose --env-file .env -f docker/docker-compose.yml up --build -d
 docker compose --env-file .env -f docker/docker-compose.yml exec futbotmx26 python testing/test_abs_dir_func.py
 ```
 
-**Important gotcha — host vs. container:** `data/raw` and `assets/sam3` resolve only
-**inside the container**, where `/Meta_Glasses` and `/sam3` are mounted from `HOST_DATA_DIR`/
-`HOST_SAM3_DIR`. On the host they are **dead symlinks**, so `get_abs_path("data/raw")`
-raises `FileNotFoundError` — this is expected. Anything touching the videos/model
-data must run in the container. Videos live in dated subfolders, so search them
+**Host vs. container — how `data/raw`/`assets/sam3` resolve:** the config keeps
+**project-relative** paths (`data/raw`, `assets/sam3`); `get_abs_path` resolves
+them against `PROJECT_ROOT`, so code always reads `<repo>/data/raw` and
+`<repo>/assets/sam3`. Making that resolve to the real data is **environment
+setup**, not code:
+- **Container:** the data volumes are mounted directly onto those paths (they
+  shadow the checkout). `HOST_DATA_DIR`/`HOST_SAM3_DIR` from `.env` provide the
+  real host paths.
+- **Host (local venv):** the data must *resolve* at `<repo>/data/raw` and
+  `<repo>/assets/sam3` — either **Case A**, real dirs with the data inside, or
+  **Case B**, symlinks to an external location you create manually
+  (`ln -sfn /mnt/disk/videos data/raw`). Both are git-ignored.
+
+So `get_abs_path("data/raw")` now works on the host too (no more dead symlinks),
+as long as the data is present. Videos live in dated subfolders, so search them
 recursively (`rglob`), not `glob`.
 
 **Passing video paths to pipeline code:** `get_abs_path` only accepts paths
-**relative to `PROJECT_ROOT`** (it rejects absolute paths). But `data/raw` is a
-symlink pointing *outside* the project (`/Meta_Glasses`), so a resolved absolute
-video path is **not** under `PROJECT_ROOT`. Therefore pass paths like
-`data/raw/<date>/.../IMG.MOV` (project-relative, symlink **unresolved**) — e.g.
-`extract_frames(Path("data/raw/.../x.MOV"))`. When discovering videos, `rglob`
-over `PROJECT_ROOT / dataset_dir` (the unresolved symlink), not over
-`get_abs_path(dataset_dir)` (which resolves to `/Meta_Glasses` and yields paths
-the pipeline functions will reject).
+**relative to `PROJECT_ROOT`** (it rejects absolute paths). In Case B `data/raw`
+is a symlink pointing *outside* the project, so a resolved absolute video path is
+**not** under `PROJECT_ROOT`. Pass project-relative paths with the symlink
+**unresolved** — e.g. `extract_frames(Path("data/raw/.../x.MOV"))`. When
+discovering videos, `rglob` over `PROJECT_ROOT / dataset_dir` (symlink
+unresolved), not over `get_abs_path(dataset_dir)` (which resolves outside the
+project and yields paths the pipeline functions will reject).
 
 ## Data & version control
 

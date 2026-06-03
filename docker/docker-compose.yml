@@ -27,23 +27,21 @@ services:
     volumes:
       # Workspace de la aplicacion (nombre configurable, no fijo en /app).
       - ../:/${CONTAINER_WORKSPACE_DIR:-futbot}
-      # Datos del HOST -> /Meta_Glasses
-      - ${HOST_DATA_DIR}:/Meta_Glasses
-      # Modelo SAM3 del HOST -> /sam3
-      - ${HOST_SAM3_DIR}:/sam3
+      # Datos pesados montados DIRECTAMENTE sobre la ruta del proyecto.
+      # Estos montajes se aplican ENCIMA del bind-mount del repo (lo sombrean),
+      # sin modificar el filesystem del host: data/raw <- HOST_DATA_DIR,
+      # assets/sam3 <- HOST_SAM3_DIR.
+      - ${HOST_DATA_DIR}:/${CONTAINER_WORKSPACE_DIR:-futbot}/data/raw
+      - ${HOST_SAM3_DIR}:/${CONTAINER_WORKSPACE_DIR:-futbot}/assets/sam3
     stdin_open: true
     tty: true
-    # Symlinks de datos pesados creados al arrancar (los volumenes ya estan montados):
-    #   data/raw -> /Meta_Glasses, assets/sam3 -> /sam3
-    # Luego mantiene el contenedor vivo para ejecutar pruebas con `exec`.
+    # Mantiene el contenedor vivo para ejecutar pruebas con `exec`.
+    # Los datos pesados llegan por montaje directo (ver `volumes`); ya NO se
+    # crean symlinks en el arranque.
     command:
       - sh
       - -c
-      - |
-        mkdir -p data assets
-        ln -sfn /Meta_Glasses data/raw
-        ln -sfn /sam3 assets/sam3
-        exec tail -f /dev/null
+      - exec tail -f /dev/null
     ports:
       - "8888:8888" # puerto para jupyter lab/notebooks
     
