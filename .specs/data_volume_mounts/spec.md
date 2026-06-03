@@ -161,3 +161,47 @@ distinto entre ambos entornos.
 1. Elaborar `plan.md` con el detalle técnico de implementación.
 2. Derivar `tasks.md` con las tareas ejecutables.
 3. Implementar (paso 5) únicamente después de aprobar los anteriores.
+
+---
+
+## 8. Adenda / Revisión (2026-06-03) — Modelo "archivos reales"
+
+> Esta adenda **revisa** la solución de esta tarea sin reabrir el ciclo SDD
+> completo (es un refinamiento de infraestructura sobre una tarea ya
+> implementada). La motivación, el contrato de rutas (§4.1) y los Casos A/B del
+> spec siguen siendo válidos; lo que cambia es el **mecanismo de montaje**.
+
+**Por qué:** los **montajes directos** de `${HOST_DATA_DIR}`/`${HOST_SAM3_DIR}`
+sobre `data/raw`/`assets/sam3` funcionan, pero arrastran un problema cuando el
+host usa **symlinks** (Caso B): el bind-mount del repo lleva el symlink al
+contenedor y Docker **resuelve el target del montaje a través de él**, dejando
+`data/raw` como symlink (no como dir real) y haciendo que `get_abs_path` resuelva
+**fuera de `PROJECT_ROOT`**. El symlink es, de hecho, el único mecanismo de
+"environment setup" que rompe Docker.
+
+**Decisión:** adoptar el modelo **"los datos viven como ARCHIVOS REALES en el
+repo"**:
+
+- `data/raw` y `assets/sam3` son **siempre directorios reales** (nunca symlinks),
+  poblados con los datos por el mecanismo nativo de cada entorno (local: mover/
+  colocar/`mount --bind`; RunPod: network volume; futuro: script `bootstrap_data`).
+- El **bind-mount del workspace** (`../:/<workspace>`) lleva esos archivos al
+  contenedor. **Se eliminan** los volúmenes `${HOST_DATA_DIR}`/`${HOST_SAM3_DIR}`
+  del `docker-compose.yml` y las variables correspondientes del `.env`.
+- El código y `configs/*.json` no cambian; la convención de rutas relativas se
+  mantiene. Ahora `get_abs_path("data/raw")` devuelve `<repo>/data/raw` (dir real
+  dentro del proyecto) en host y contenedor.
+
+**Impacto en los criterios de aceptación previos:**
+- **Quedan obsoletos** los que dependían del montaje directo de volúmenes de
+  datos: AC-2, AC-7 (se cumple ahora vía el bind del workspace) y la regla del
+  nivel `Meta_Glasses` de AC-6 (los datos cuelgan directo de `data/raw`).
+- **T5** de `tasks.md` (corregir el nivel `Meta_Glasses` en `HOST_DATA_DIR`)
+  queda **superado**: ya no existe `HOST_DATA_DIR`.
+- Siguen vigentes: AC-3 (host intacto), AC-4/AC-5 (resolución local), AC-8
+  (datos no versionados), AC-10 (reproducibilidad — ahora "coloca tus datos
+  reales bajo `data/raw`/`assets/sam3`").
+
+**Pendiente relacionado:** el script `bootstrap_data` (descarga idempotente) que
+automatiza poblar esos dirs reales. Ver `.specs/drafts/bootstrap_data.md` y el
+TODO en `CLAUDE.md`. La estrategia de RunPod sigue por definir.

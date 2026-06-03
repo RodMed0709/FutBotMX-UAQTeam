@@ -141,3 +141,8 @@
   `fix(docker): mount heavy data directly to avoid broken host symlinks`.
 - Esta tarea **no** modifica `src/`, `configs/*.json`, `Dockerfile` ni
   `.gitignore`.
+
+> **Revisión 2026-06-03:** ver `spec.md` §8 (adenda). Se adoptó el modelo
+> "archivos reales en el repo": se **eliminaron** los montajes de datos del
+> `docker-compose.yml` y las variables `HOST_DATA_DIR`/`HOST_SAM3_DIR` del `.env`.
+> **T5 queda superado** (ya no existe `HOST_DATA_DIR`).

@@ -7,7 +7,9 @@
 #
 #   docker compose --env-file .env -f docker/docker-compose.yml up --build
 #
-# Completa antes HOST_DATA_DIR y HOST_SAM3_DIR en el .env.
+# Los datos pesados (videos en data/raw, modelo en assets/sam3) deben existir
+# como ARCHIVOS REALES en el repo; el bind-mount del workspace los lleva al
+# contenedor. Ya no se montan volumenes de datos por separado.
 # ===================================================
 
 services:
@@ -26,18 +28,17 @@ services:
       - ../.env
     volumes:
       # Workspace de la aplicacion (nombre configurable, no fijo en /app).
+      # Lleva TODO el repo, incluidos data/raw y assets/sam3 como dirs reales.
+      # No hay volumenes de datos por separado: la convencion es que los datos
+      # pesados viven como archivos reales bajo data/raw y assets/sam3 (ver el
+      # futuro script bootstrap_data). Asi data/raw es un dir real dentro del
+      # contenedor (sin symlinks que Docker tenga que resolver).
       - ../:/${CONTAINER_WORKSPACE_DIR:-futbot}
-      # Datos pesados montados DIRECTAMENTE sobre la ruta del proyecto.
-      # Estos montajes se aplican ENCIMA del bind-mount del repo (lo sombrean),
-      # sin modificar el filesystem del host: data/raw <- HOST_DATA_DIR,
-      # assets/sam3 <- HOST_SAM3_DIR.
-      - ${HOST_DATA_DIR}:/${CONTAINER_WORKSPACE_DIR:-futbot}/data/raw
-      - ${HOST_SAM3_DIR}:/${CONTAINER_WORKSPACE_DIR:-futbot}/assets/sam3
     stdin_open: true
     tty: true
     # Mantiene el contenedor vivo para ejecutar pruebas con `exec`.
-    # Los datos pesados llegan por montaje directo (ver `volumes`); ya NO se
-    # crean symlinks en el arranque.
+    # Los datos pesados llegan por el bind-mount del workspace (son archivos
+    # reales del repo); ya NO se crean symlinks ni se montan volumenes aparte.
     command:
       - sh
       - -c
