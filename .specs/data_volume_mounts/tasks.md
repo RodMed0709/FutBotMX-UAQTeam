@@ -100,13 +100,13 @@
     `…/data/raw` y `…/assets/sam3` sin errores.
   - **Plan:** §8.1. **Spec:** AC-2.
 
-- [ ] **T11 — Levantar el contenedor y verificar que el host queda intacto**
+- [x] **T11 — Levantar el contenedor y verificar que el host queda intacto**
   - `... up --build -d`; luego en el host `ls -la data/raw assets/sam3`.
   - **Verificación:** el contenedor queda arriba y en el host `data/raw`/
     `assets/sam3` **no** son symlinks rotos (AC-3).
   - **Plan:** §8.2, §8.3. **Spec:** AC-1, AC-3.
 
-- [ ] **T12 — Verificar acceso a datos en el contenedor**
+- [x] **T12 — Verificar acceso a datos en el contenedor**
   - `... exec futbotmx26 python testing/test_abs_dir_func.py` y
     `... exec futbotmx26 python testing/test_frame_extraction.py`.
   - **Verificación:** ambos corren sin error y ven los datos montados.
