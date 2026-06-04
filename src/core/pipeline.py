@@ -23,7 +23,7 @@ from pathlib import Path
 
 import numpy as np
 
-from src.core.frame_extraction import extract_frames
+from src.core.frame_extraction import extract_frames, get_video_fps
 from src.core.overlay import overlay_detections
 from src.core.sam3_loader import load_sam3
 from src.core.segmentation import detect_classes_in_frame
@@ -100,7 +100,11 @@ def run_pipeline(
             f"mode '{mode}' no soportado (solo 'per_frame' por ahora)."
         )
 
-    classes, outputs_dir, fps = _load_pipeline_config()
+    classes, outputs_dir, config_fps = _load_pipeline_config()
+
+    # fps de salida: en modo completo, el fps real de la fuente; en cuota
+    # (frames muestreados), el fps de configuracion (slideshow).
+    fps = get_video_fps(video_path) if all_frames else config_fps
 
     # Composicion de rutas de salida.
     stem = Path(video_path).stem

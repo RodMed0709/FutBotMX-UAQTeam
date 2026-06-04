@@ -146,9 +146,30 @@ def extract_frames(video_path: Path, all_frames: bool = False) -> np.ndarray:
             indices = np.arange(total)
         else:
             # Indices equiespaciados en el tiempo a lo largo del video.
-            indices = np.unique(
-                np.linspace(0, total - 1, quota).round().astype(int)
-            )
+            indices = np.unique(np.linspace(0, total - 1, quota).round().astype(int))
 
     frames = reader.get_batch(indices.tolist()).asnumpy()
     return frames
+
+
+def get_video_fps(video_path: Path) -> float:
+    """Devuelve el fps promedio de un video.
+
+    Abre el video solo para leer sus metadatos (no decodifica frames). Util para
+    que el pipeline escriba el video de salida a la velocidad real de la fuente en
+    modo completo.
+
+    Args:
+        video_path: ruta del video (Path). Puede ser relativa a PROJECT_ROOT o
+            absoluta a un archivo valido, igual que en ``extract_frames``.
+
+    Returns:
+        El fps promedio del video como ``float``.
+
+    Raises:
+        ValueError: si ``video_path`` no es de tipo Path.
+        FileNotFoundError: si la ruta del video no existe o no es un archivo.
+    """
+    abs_path = _resolve_video_path(video_path)
+    reader = decord.VideoReader(str(abs_path))
+    return float(reader.get_avg_fps())

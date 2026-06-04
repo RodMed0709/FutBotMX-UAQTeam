@@ -27,7 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.core import extract_frames  # noqa: E402
+from src.core import extract_frames, get_video_fps  # noqa: E402
 from src.utils import get_abs_path  # noqa: E402
 
 
@@ -109,6 +109,12 @@ def main() -> int:
         f"  forma: {frames_all.shape}  dtype: {frames_all.dtype}  "
         f"frames: {frames_all.shape[0]}\n"
     )
+
+    print("== get_video_fps ==")
+    fps = get_video_fps(video)
+    print(f"  fps: {fps}")
+    assert isinstance(fps, float) and fps > 0, f"fps invalido: {fps!r}"
+    print("  fps es un float > 0  OK\n")
 
     print("== Resultado ==")
     print("  OK: demostracion de extract_frames completada.")
