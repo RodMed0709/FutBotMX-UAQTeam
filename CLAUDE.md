@@ -14,18 +14,27 @@ two pipelines that share the same dataset, config conventions and methodology:
 
 ### Current state
 
-Early implementation. Four atomic tasks are done (see `.specs/<task>/tasks.md`):
+Early implementation. Several atomic tasks are done (each has its own
+`.specs/<task>/{spec,plan,tasks}.md`):
 - **`env_setup`** — venv/Docker environment, `docker/`, `.env`, `testing/test_env.py`.
+- **`editable_module`** — `setup.py`; `src` installs as an editable package so
+  `import src` works from any cwd (notebooks included) without `sys.path` hacks.
 - **`abs_dir_func`** — `src/utils.py::get_abs_path`, `testing/test_abs_dir_func.py`.
 - **`frame_extraction`** — `src/core/frame_extraction.py::extract_frames`,
   `testing/test_frame_extraction.py` (first piece of `src/core/`, the pipeline's
   core logic submodule).
-- **`frame_visualization`** — `src/utils.py::show_frames`, validated by
-  `notebooks/02_frame_visualization_demo.ipynb`. A *display-only* utility: takes a
-  4D `(N,H,W,3)` NumPy array (e.g. `extract_frames`' output) and shows up to 6
-  frames (uniformly sampled if more) in a matplotlib grid; it never writes to disk.
+- **`abs_video_path`** — extends `extract_frames` to accept an **absolute** path
+  to an existing file (not only PROJECT_ROOT-relative); `testing/test_abs_video_path.py`.
+- **`data_volume_mounts`** — Docker data model; **revised** (see its `spec.md` §8)
+  to the "real files in the repo" model: no separate data volumes.
+- **`frame_visualization`** — `src/utils.py::show_frames`, a *display-only*
+  utility: takes a 4D `(N,H,W,3)` NumPy array (e.g. `extract_frames`' output) and
+  shows up to 6 frames (uniformly sampled if more) in a matplotlib grid; never
+  writes to disk.
 
 Scaffolding dirs: `src/ assets/ configs/ data/ docker/ models/ notebooks/ outputs/ testing/`.
+`notebooks/fase_0/` holds numbered exploration notebooks (`00_env_check` …
+`05_pipline_testing`), several of them SAM3 spikes — exploratory, not pipeline code.
 The detection/segmentation/tracking pipelines themselves are **not built yet**.
 
 **Pending / TODO (not yet done):**
@@ -72,6 +81,15 @@ Before writing any `.specs/` document you MUST:
 
 This is the literal protocol from constitution §8. Work and documents are in **Spanish**.
 
+### Commits (constitution §7.1 / §11)
+
+- **Never commit or push on your own initiative** — when a step/task looks done,
+  **ask** and wait for explicit confirmation.
+- **Conventional Commits, message in English:** `type(scope): short imperative
+  summary` (≤72 chars, no trailing period). `scope` is preferably the affected
+  `.specs/` atomic task (e.g. `data_volume_mounts`) or area (`docker`, `sdd`,
+  `config`). One commit per logical change.
+
 ## Configuration conventions (from the constitution)
 
 - Global configs live in JSON files named `{NN}_{EXP}.json` (`NN` = version/trial,
@@ -103,7 +121,14 @@ This is the literal protocol from constitution §8. Work and documents are in **
   extract_frames` work from any cwd (notebooks included) without `sys.path` hacks.
   In the container this is done at build time (`pip install -e .` in the
   `Dockerfile`), so no manual step is needed there — just rebuild.
-- Dev tooling pinned in `requirements.txt`: `ruff` (lint), `black` (format), `pytest` (tests).
+- Dev tooling pinned in `requirements.txt` (no dedicated config in `pyproject`/
+  `setup.cfg`, so defaults apply): `ruff check .` (lint), `black .` (format).
+- **There is no pytest suite yet.** Despite the `test_*.py` names, the files in
+  `testing/` are **standalone manual scripts** run directly with `python` (see
+  below), not collected by `pytest`.
+- Locally the dev environment observed is a **conda env** (`futbot26`), not the
+  `.venv/` the constitution mandates — if `python`/`jupyter` aren't on PATH, use
+  that interpreter (e.g. `~/miniconda3/envs/futbot26/bin/python`).
 - Docker is intentionally simple: `docker/Dockerfile` + `docker/docker-compose.yml`,
   service name **`futbotmx26`**, prepared to run on RunPod. No custom entrypoints,
   no remote image registry. There is a **single** volume: the app workspace bind

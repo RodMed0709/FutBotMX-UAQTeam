@@ -18,6 +18,7 @@ moviepy>=1.0.3
 imageio>=2.34
 imageio-ffmpeg>=0.4.9
 scikit-image>=0.22
+ultralytics >= 8.3.237
 
 # ML + deep learning ecosystem
 transformers>=4.45
@@ -31,6 +32,7 @@ einops>=0.8
 
 # Tracking / detection utilities
 supervision>=0.22
+trackers
 
 # Config + utilities
 omegaconf>=2.3
