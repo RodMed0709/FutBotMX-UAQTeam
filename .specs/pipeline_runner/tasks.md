@@ -29,7 +29,7 @@
 
 - [x] **T2 — `run_pipeline` (orquestación + rutas + modos)**
   - Firma `run_pipeline(video_path, output_path=None, all_frames=False,
-    mode="per_frame") -> dict[str, Path]`.
+mode="per_frame") -> dict[str, Path]`.
   - Validar `mode` (≠ `per_frame` → `NotImplementedError` **antes** de cargar el
     modelo); componer rutas (`outputs/<stem>_annotated.mp4` + `_detections.json`,
     override por `output_path`; `mkdir` del dir del JSON).
@@ -77,7 +77,7 @@
 
 ## Fase D — Validación manual (a cargo del usuario, en RunPod/GPU)
 
-- [ ] **T6 — Ejecutar el pipeline en RunPod**
+- [x] **T6 — Ejecutar el pipeline en RunPod**
   - Correr:
     ```bash
     docker compose --env-file .env -f docker/docker-compose.yml \
@@ -92,11 +92,11 @@
 
 ## Trazabilidad resumida
 
-| Tarea | Plan | Spec (AC) |
-|---|---|---|
-| T1 `_load_pipeline_config` | §3.1, §3.3 | AC-7 |
-| T2 `run_pipeline` | §3.2, §3.4, §3.5, §3.7, §3.8 | AC-2, AC-4, AC-5, AC-6, AC-7, AC-8 |
-| T3 JSON de detecciones | §3.6 | AC-3 |
-| T4 exportación | §3.1 | AC-1 |
-| T5 script de prueba (crear) | §5.2 | AC-9 |
-| T6 validación manual (RunPod) | §5 | AC-9 |
+| Tarea                         | Plan                         | Spec (AC)                          |
+| ----------------------------- | ---------------------------- | ---------------------------------- |
+| T1 `_load_pipeline_config`    | §3.1, §3.3                   | AC-7                               |
+| T2 `run_pipeline`             | §3.2, §3.4, §3.5, §3.7, §3.8 | AC-2, AC-4, AC-5, AC-6, AC-7, AC-8 |
+| T3 JSON de detecciones        | §3.6                         | AC-3                               |
+| T4 exportación                | §3.1                         | AC-1                               |
+| T5 script de prueba (crear)   | §5.2                         | AC-9                               |
+| T6 validación manual (RunPod) | §5                           | AC-9                               |
