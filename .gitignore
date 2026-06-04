@@ -40,6 +40,7 @@ assets/checkpoints/
 # 4. Resultados, Logs y Tracking de Experimentos
 outputs/
 notebooks/**/outputs/
+notebooks/fase_0/.bak_prompt/ 
 experiments/
 logs/
 *.log
