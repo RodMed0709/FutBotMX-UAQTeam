@@ -89,3 +89,6 @@ jupyter_server_config.json
 
 # 11. Borradores de specs (no versionar; constitucion)
 .specs/drafts/
+
+# 12. Herramientas de IA y estado local
+.claude/
