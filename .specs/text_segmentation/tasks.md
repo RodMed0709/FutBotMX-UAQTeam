@@ -94,7 +94,7 @@
 
 ## Fase E — Validación manual (a cargo del usuario, en RunPod/GPU)
 
-- [ ] **T7 — Ejecutar y validar manualmente en RunPod (GPU)**
+- [x] **T7 — Ejecutar y validar manualmente en RunPod (GPU)**
   - Ejecutar el script donde haya pesos + GPU:
     ```bash
     docker compose --env-file .env -f docker/docker-compose.yml \
