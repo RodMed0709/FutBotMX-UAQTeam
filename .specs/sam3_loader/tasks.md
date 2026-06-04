@@ -15,7 +15,7 @@
 
 ## Fase A — Estructura
 
-- [ ] **T1 — Crear `src/core/sam3_loader.py` con la dataclass `Sam3Bundle`**
+- [x] **T1 — Crear `src/core/sam3_loader.py` con la dataclass `Sam3Bundle`**
   - Crear el archivo y definir
     `@dataclass class Sam3Bundle: processor; model; device: str`.
   - **Verificación:** el módulo importa sin errores y `Sam3Bundle` existe con los
@@ -26,7 +26,7 @@
 
 ## Fase B — Módulo y función
 
-- [ ] **T2 — Resolución de la ruta del modelo (`_resolve_sam3_dir`)**
+- [x] **T2 — Resolución de la ruta del modelo (`_resolve_sam3_dir`)**
   - Leer `CONFIG_FILENAME` del `.env` con `strip()`; resolver
     `configs/<CONFIG_FILENAME>` con `get_abs_path`; parsear el JSON; leer
     `working_dirs.sam3_dir`; resolverlo con `get_abs_path` → ruta absoluta del
@@ -36,7 +36,7 @@
     `KeyError`/`ValueError`/`FileNotFoundError`.
   - **Plan:** §3.4. **Spec:** AC-2, AC-8.
 
-- [ ] **T3 — Construcción del bundle (`_build_bundle`) con device + imports perezosos**
+- [x] **T3 — Construcción del bundle (`_build_bundle`) con device + imports perezosos**
   - Importar `torch` y `transformers` **dentro** de la función. Resolver device:
     `device or ("cuda" if torch.cuda.is_available() else "cpu")`.
   - Cargar con `AutoProcessor.from_pretrained(str(sam3_dir))` y
@@ -48,7 +48,7 @@
     (no aparecen en `sys.modules` hasta llamar a `load_sam3`).
   - **Plan:** §3.5, §3.6. **Spec:** AC-1, AC-4, AC-5.
 
-- [ ] **T4 — Capa de caché y función pública `load_sam3`**
+- [x] **T4 — Capa de caché y función pública `load_sam3`**
   - Definir `_cached_load()` decorada con `lru_cache(maxsize=1)` que llama a
     `_build_bundle()`.
   - Definir `load_sam3(*, use_cache: bool = True, device: str | None = None)
@@ -59,7 +59,7 @@
     contamina el singleton.
   - **Plan:** §3.3, §3.5. **Spec:** AC-6, AC-7.
 
-- [ ] **T5 — Manejo de errores**
+- [x] **T5 — Manejo de errores**
   - Asegurar el reparto de excepciones de §3.7: `CONFIG_FILENAME` ausente, config
     inexistente, `working_dirs.sam3_dir` ausente, directorio del modelo
     inexistente, fallo de `from_pretrained` — todas **propagadas** (fallo
@@ -68,7 +68,7 @@
     proceso.
   - **Plan:** §3.7. **Spec:** AC-9.
 
-- [ ] **T6 — Exportar `load_sam3` en `src/core/__init__.py`**
+- [x] **T6 — Exportar `load_sam3` en `src/core/__init__.py`**
   - Añadir `from src.core.sam3_loader import load_sam3` y sumar `"load_sam3"`
     (y `"Sam3Bundle"` si se decide exponerla) a `__all__`.
   - **Verificación:** `from src.core import load_sam3` funciona desde cualquier
@@ -79,7 +79,7 @@
 
 ## Fase C — Script de prueba
 
-- [ ] **T7 — Crear `testing/test_sam3_loader.py`**
+- [x] **T7 — Crear `testing/test_sam3_loader.py`**
   - `bundle = load_sam3()` → imprimir `type(model).__name__`, `bundle.device`,
     `dtype` y conteo de parámetros.
   - `bundle2 = load_sam3()` → comprobar `bundle2 is bundle` (caché).
@@ -95,7 +95,7 @@
 
 ## Fase D — Validación manual (a cargo del usuario)
 
-- [ ] **T8 — Ejecutar y validar manualmente (donde existan los pesos)**
+- [x] **T8 — Ejecutar y validar manualmente (donde existan los pesos)**
   - Ejecutar dentro del contenedor (o pod con GPU):
     ```bash
     docker compose --env-file .env -f docker/docker-compose.yml \
