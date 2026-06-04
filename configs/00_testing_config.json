@@ -11,5 +11,8 @@
     { "name": "robot",       "sam3_prompts": ["robot"],       "color": [60, 130, 255], "coco_id": 1 },
     { "name": "orange_ball", "sam3_prompts": ["orange ball"], "color": [255, 100, 0],  "coco_id": 2 },
     { "name": "green_floor", "sam3_prompts": ["green playing surface with lines", "green floor"], "color": [50, 220, 70], "coco_id": 3 }
-  ]
+  ],
+  "visualization":{
+    "overlay_alpha":0.55
+  }
 }
