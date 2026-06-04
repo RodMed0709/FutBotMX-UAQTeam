@@ -72,7 +72,7 @@
     corrida visual queda para T6.
   - **Plan:** §5.2. **Spec:** AC-8.
 
-- [ ] **T6 — Validación del pipeline completo en RunPod (usuario)**
+- [x] **T6 — Validación del pipeline completo en RunPod (usuario)**
   - Ejecutar el notebook `07_pipeline_full_video_check.ipynb` en RunPod: correr el
     pipeline en modo completo y **comparar visualmente** original vs. anotado en
     las dos celdas.
