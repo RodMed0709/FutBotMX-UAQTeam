@@ -1,7 +1,8 @@
 {
   "working_dirs":{
     "dataset_dir":"data/raw",
-    "sam3_dir":"assets/sam3"
+    "sam3_dir":"assets/sam3",
+    "outputs_dir":"outputs"
   },
   "preprocess":{
     "fps":"1",
@@ -13,6 +14,7 @@
     { "name": "green_floor", "sam3_prompts": ["green playing surface with lines", "green floor"], "color": [230, 0, 120], "coco_id": 3 }
   ],
   "visualization":{
-    "overlay_alpha":0.55
+    "overlay_alpha":0.55,
+    "output_fps":4
   }
 }
