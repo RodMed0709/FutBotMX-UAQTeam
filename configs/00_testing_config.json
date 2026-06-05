@@ -8,6 +8,12 @@
   "seeds":{
     "split":42
   },
+  "splits":{
+    "forced_testing":[
+      "data/raw/18abril/Camara_superior/IMG_9933.MOV",
+      "data/raw/18abril/Camara_superior/IMG_9938.MOV"
+    ]
+  },
   "preprocess":{
     "fps":"1",
     "frame_quota":30

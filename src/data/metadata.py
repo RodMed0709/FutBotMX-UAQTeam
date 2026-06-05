@@ -57,10 +57,15 @@ def _load_env(env_path: Path) -> dict[str, str]:
     return env
 
 
-def _load_metadata_config() -> tuple[str, str, int]:
-    """Lee (dataset_dir, metadata_csv, split_seed) de la configuracion global.
+def _load_metadata_config() -> tuple[str, str, int, list[str]]:
+    """Lee la configuracion del manifiesto desde la configuracion global.
 
     El nombre del archivo de configuracion se toma de CONFIG_FILENAME en el .env.
+
+    Returns:
+        Tupla ``(dataset_dir, metadata_csv, split_seed, forced_testing)``, donde
+        ``forced_testing`` es la lista de rutas (relativas a PROJECT_ROOT) que deben
+        quedar siempre en el split de testing; vacia si la clave no existe.
 
     Raises:
         ValueError: si CONFIG_FILENAME no esta en el .env.
@@ -86,10 +91,14 @@ def _load_metadata_config() -> tuple[str, str, int]:
     if "split" not in seeds:
         raise KeyError("Falta 'seeds.split' en la configuracion.")
 
+    # Opcional: videos fijados a testing (vacio si la seccion/clave no existe).
+    forced_testing = config.get("splits", {}).get("forced_testing", [])
+
     return (
         working_dirs["dataset_dir"],
         working_dirs["metadata_csv"],
         int(seeds["split"]),
+        list(forced_testing),
     )
 
 
@@ -141,22 +150,30 @@ def _extract_video_metadata(abs_path: Path) -> dict:
     return {"duracion": duracion, "ancho": ancho, "alto": alto, "fps_average": fps}
 
 
-def _assign_splits(n: int, seed: int) -> list[int]:
+def _assign_splits(
+    n: int, seed: int, forced_testing_idx: list[int] | None = None
+) -> list[int]:
     """Asigna un split a cada uno de los ``n`` videos de forma reproducible.
 
-    Usa una unica permutacion *seeded* y cortes contiguos, por lo que los splits son
-    disjuntos y sin reemplazo por construccion. El orden de salida esta alineado con
-    el orden determinista de ``_discover_videos`` (indice -> split).
+    Los indices en ``forced_testing_idx`` quedan **siempre** en testing; las plazas
+    restantes de testing (``20 - nº fijados``) y las de fine-tuning (23) se reparten
+    al azar (con la seed) entre los videos **no fijados**, mediante una unica
+    permutacion y cortes contiguos. Asi los splits son disjuntos y sin reemplazo por
+    construccion, y la fijacion no altera los conteos por split. El orden de salida
+    esta alineado con el orden determinista de ``_discover_videos`` (indice -> split).
 
     Args:
         n: numero de videos.
         seed: semilla para reproducibilidad.
+        forced_testing_idx: indices (sobre el orden de ``_discover_videos``) que se
+            fijan a testing; ``None``/vacio replica el reparto totalmente aleatorio.
 
     Returns:
         Lista de longitud ``n`` con el split (0/1/2) de cada video.
 
     Raises:
-        ValueError: si ``n`` es menor que la suma de los conteos fijos de splits.
+        ValueError: si ``n`` es menor que la suma de los conteos fijos de splits, o si
+            hay mas videos fijados que plazas de testing.
     """
     required = sum(SPLIT_SIZES.values())
     if n < required:
@@ -165,15 +182,30 @@ def _assign_splits(n: int, seed: int) -> list[int]:
             f"hay {n}."
         )
 
-    rng = np.random.default_rng(seed)
-    perm = rng.permutation(n)
+    forced = set(forced_testing_idx or ())
+    n_testing = SPLIT_SIZES[SPLIT_TESTING]
+    if len(forced) > n_testing:
+        raise ValueError(
+            f"Hay {len(forced)} videos fijados a testing, pero solo {n_testing} "
+            "plazas de testing."
+        )
+
     splits = [SPLIT_RESERVE] * n
+    for idx in forced:
+        splits[idx] = SPLIT_TESTING
+
+    # La aleatoriedad actua solo sobre los no fijados (reproducible con la seed).
+    pool = [i for i in range(n) if i not in forced]
+    rng = np.random.default_rng(seed)
+    shuffled = [pool[int(i)] for i in rng.permutation(len(pool))]
+
     cursor = 0
-    for split_id in (SPLIT_FINETUNING, SPLIT_TESTING):
-        size = SPLIT_SIZES[split_id]
-        for idx in perm[cursor : cursor + size]:
-            splits[int(idx)] = split_id
-        cursor += size
+    remaining_testing = n_testing - len(forced)
+    for idx in shuffled[cursor : cursor + remaining_testing]:
+        splits[idx] = SPLIT_TESTING
+    cursor += remaining_testing
+    for idx in shuffled[cursor : cursor + SPLIT_SIZES[SPLIT_FINETUNING]]:
+        splits[idx] = SPLIT_FINETUNING
     return splits
 
 
@@ -221,7 +253,7 @@ def build_metadata_csv(force: bool = False) -> pd.DataFrame:
         ValueError / KeyError / FileNotFoundError: ver ``_load_metadata_config``.
         ValueError: si no hay videos suficientes para los splits (``_assign_splits``).
     """
-    dataset_dir, metadata_csv, seed = _load_metadata_config()
+    dataset_dir, metadata_csv, seed, forced_testing = _load_metadata_config()
     # No usamos get_abs_path: el CSV puede no existir aun (lo estamos creando).
     csv_path = PROJECT_ROOT / metadata_csv
 
@@ -229,7 +261,20 @@ def build_metadata_csv(force: bool = False) -> pd.DataFrame:
         return pd.read_csv(csv_path)
 
     videos = _discover_videos(dataset_dir)
-    splits = _assign_splits(len(videos), seed)
+
+    # Mapa ruta-relativa -> indice, para resolver los videos fijados a testing.
+    ruta_a_idx = {
+        p.relative_to(PROJECT_ROOT).as_posix(): idx for idx, p in enumerate(videos)
+    }
+    forced_testing_idx = []
+    for ruta in forced_testing:
+        if ruta not in ruta_a_idx:
+            raise ValueError(
+                f"Video fijado a testing no encontrado en el dataset: {ruta!r}"
+            )
+        forced_testing_idx.append(ruta_a_idx[ruta])
+
+    splits = _assign_splits(len(videos), seed, forced_testing_idx)
 
     rows = []
     for idx, abs_path in enumerate(videos):

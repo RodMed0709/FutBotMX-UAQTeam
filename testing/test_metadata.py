@@ -41,7 +41,7 @@ from src.utils import get_abs_path  # noqa: E402
 def main() -> int:
     print(f"PROJECT_ROOT: {PROJECT_ROOT}\n")
 
-    _, metadata_csv, _ = _load_metadata_config()
+    _, metadata_csv, _, forced_testing = _load_metadata_config()
     csv_path = PROJECT_ROOT / metadata_csv
 
     print("== Generacion (force=True) ==")
@@ -72,6 +72,14 @@ def main() -> int:
     assert counts.get(SPLIT_RESERVE, 0) == reserva
     assert set(df["split"].unique()) <= {SPLIT_RESERVE, SPLIT_FINETUNING, SPLIT_TESTING}
     print(f"  23/20/{reserva} disjuntos y cubrientes  OK\n")
+
+    print("== Videos fijados a testing ==")
+    print(f"  forzados: {forced_testing}")
+    for ruta in forced_testing:
+        fila = df[df["ruta"] == ruta]
+        assert not fila.empty, f"Ruta fijada ausente del CSV: {ruta}"
+        assert int(fila["split"].iloc[0]) == SPLIT_TESTING, f"{ruta} no esta en testing"
+    print("  todos los fijados en testing (split=2)  OK\n")
 
     print("== Reproducibilidad ==")
     df2 = build_metadata_csv(force=True)
