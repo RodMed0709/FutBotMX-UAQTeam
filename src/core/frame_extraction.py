@@ -111,6 +111,55 @@ def _resolve_video_path(video_path: Path) -> Path:
     return video_path.resolve()
 
 
+def _select_frame_indices(total: int, all_frames: bool) -> np.ndarray:
+    """Calcula los indices de frame a extraer de un video de ``total`` frames.
+
+    Logica de muestreo unica (extraida de ``extract_frames`` sin cambios), para que
+    tanto la extraccion como ``get_frame_indices`` la compartan y no diverjan:
+
+    - ``all_frames=True``: todos los indices ``0..total-1``.
+    - modo cuota: si el video tiene ``<= quota`` frames, todos; si no, indices
+      equiespaciados en el tiempo (la cuota es un maximo).
+
+    Raises:
+        ValueError: si CONFIG_FILENAME no esta en el .env o la cuota no es valida.
+        KeyError: si falta la cuota en la configuracion (modo cuota).
+    """
+    if all_frames:
+        return np.arange(total)
+    quota = _load_frame_quota()
+    if total <= quota:
+        return np.arange(total)
+    return np.unique(np.linspace(0, total - 1, quota).round().astype(int))
+
+
+def get_frame_indices(video_path: Path, all_frames: bool = False) -> np.ndarray:
+    """Devuelve los indices (en el video fuente) que el muestreo seleccionaria.
+
+    Util para registrar de que frame original proviene cada frame extraido sin
+    duplicar la logica de muestreo: el frame posicional ``i`` que devuelve
+    ``extract_frames`` corresponde a ``get_frame_indices(...)[i]``.
+
+    Args:
+        video_path: ruta del video (Path), relativa a PROJECT_ROOT o absoluta, igual
+            que en ``extract_frames``.
+        all_frames: mismo significado que en ``extract_frames``.
+
+    Returns:
+        ``np.ndarray`` de indices de frame en el video fuente, alineado por posicion
+        con la salida de ``extract_frames`` para los mismos argumentos.
+
+    Raises:
+        ValueError: entrada invalida (video_path no es Path, CONFIG_FILENAME ausente
+            o cuota invalida).
+        FileNotFoundError: si la ruta del video no existe o no es un archivo.
+        KeyError: si falta la cuota en la configuracion (modo cuota).
+    """
+    abs_path = _resolve_video_path(video_path)
+    total = len(decord.VideoReader(str(abs_path)))
+    return _select_frame_indices(total, all_frames)
+
+
 def extract_frames(video_path: Path, all_frames: bool = False) -> np.ndarray:
     """Extrae frames de un video como un arreglo de NumPy.
 
@@ -137,16 +186,7 @@ def extract_frames(video_path: Path, all_frames: bool = False) -> np.ndarray:
     reader = decord.VideoReader(str(abs_path))
     total = len(reader)
 
-    if all_frames:
-        indices = np.arange(total)
-    else:
-        quota = _load_frame_quota()
-        if total <= quota:
-            # La cuota es un maximo: si el video tiene menos frames, se toman todos.
-            indices = np.arange(total)
-        else:
-            # Indices equiespaciados en el tiempo a lo largo del video.
-            indices = np.unique(np.linspace(0, total - 1, quota).round().astype(int))
+    indices = _select_frame_indices(total, all_frames)
 
     frames = reader.get_batch(indices.tolist()).asnumpy()
     return frames

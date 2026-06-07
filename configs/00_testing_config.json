@@ -3,7 +3,9 @@
     "dataset_dir":"data/raw",
     "sam3_dir":"assets/sam3",
     "outputs_dir":"outputs",
-    "metadata_csv":"assets/db_metadata.csv"
+    "metadata_csv":"assets/db_metadata.csv",
+    "testing_frames_dir":"data/testing_frames",
+    "testing_frames_csv":"assets/testing_frames.csv"
   },
   "seeds":{
     "split":42
