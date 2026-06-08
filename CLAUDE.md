@@ -14,28 +14,73 @@ two pipelines that share the same dataset, config conventions and methodology:
 
 ### Current state
 
-Early implementation. Several atomic tasks are done (each has its own
-`.specs/<task>/{spec,plan,tasks}.md`):
-- **`env_setup`** — venv/Docker environment, `docker/`, `.env`, `testing/test_env.py`.
-- **`editable_module`** — `setup.py`; `src` installs as an editable package so
-  `import src` works from any cwd (notebooks included) without `sys.path` hacks.
-- **`abs_dir_func`** — `src/utils.py::get_abs_path`, `testing/test_abs_dir_func.py`.
-- **`frame_extraction`** — `src/core/frame_extraction.py::extract_frames`,
-  `testing/test_frame_extraction.py` (first piece of `src/core/`, the pipeline's
-  core logic submodule).
-- **`abs_video_path`** — extends `extract_frames` to accept an **absolute** path
-  to an existing file (not only PROJECT_ROOT-relative); `testing/test_abs_video_path.py`.
-- **`data_volume_mounts`** — Docker data model; **revised** (see its `spec.md` §8)
-  to the "real files in the repo" model: no separate data volumes.
-- **`frame_visualization`** — `src/utils.py::show_frames`, a *display-only*
-  utility: takes a 4D `(N,H,W,3)` NumPy array (e.g. `extract_frames`' output) and
-  shows up to 6 frames (uniformly sampled if more) in a matplotlib grid; never
-  writes to disk.
+The **SAM3-only pipeline is built**. The constitution's YOLO→SAM3→ByteTrack "base
+pipeline" and the fine-tuning pipeline are **not** (YOLO is unexplored — there is a
+stray `notebooks/fase_0/yolov8n.pt` but no YOLO code). Two inference paths exist,
+both config-driven and reusing the same building blocks:
 
-Scaffolding dirs: `src/ assets/ configs/ data/ docker/ models/ notebooks/ outputs/ testing/`.
-`notebooks/fase_0/` holds numbered exploration notebooks (`00_env_check` …
-`05_pipline_testing`), several of them SAM3 spikes — exploratory, not pipeline code.
-The detection/segmentation/tracking pipelines themselves are **not built yet**.
+- **Per-frame** (`src/core/pipeline.py::run_pipeline`, `mode="per_frame"`):
+  `video → extract_frames → detect_classes_in_frame (per frame, per class) →
+  overlay → mp4 + JSON`. `obj_id`s are **not** stable across frames here.
+- **Tracking** (`src/core/tracking.py::track_video`): streams the video frame by
+  frame, reuses the per-frame detector, derives boxes from masks and associates
+  them with **ByteTrack** (`trackers.ByteTrackTracker`, one tracker per class) into
+  **stable, globally-unique `obj_id`s**. Handles full video without OOM. Output:
+  incremental mp4 + a tracker-agnostic track index (`Track`/`TrackObservation`) as
+  JSON (no masks). `mode="tracking"` in `pipeline.py` is still a stub
+  (`NotImplementedError`) — wiring it in is a future task.
+
+Atomic tasks done (each with `.specs/<task>/{spec,plan,tasks}.md`): env_setup,
+editable_module, abs_dir_func, frame_extraction, abs_video_path, data_volume_mounts,
+frame_visualization, sam3_loader, classes_config, text_segmentation,
+segmentation_overlay, video_writer, pipeline_runner, source_fps,
+csv_dataset_metadata, forced_testing_split, eval_frame_export, gt_annotation
+(human/process task — no code), video_tracking.
+
+`notebooks/fase_0/` holds numbered exploration notebooks (SAM3 spikes) — exploratory
+reference, **not** pipeline code; the production code lives under `src/`.
+
+### Code architecture (the big picture)
+
+Everything is **config-driven** (no hardcoded paths/params — see Configuration
+conventions) and the modules compose into the two pipelines above:
+
+- **`src/core/` — pipeline logic over frames:**
+  - `sam3_loader.py::load_sam3()` → `Sam3Bundle(processor, model, device)`; loads
+    SAM3 once (HF transformers, bf16, cuda-if-available).
+  - `segmentation.py::detect_classes_in_frame(frame, classes, bundle)` →
+    `{class_name: [Detection(obj_id, mask, score)]}`, running one SAM3 *single-frame*
+    video session per class via text prompts. `Detection` is the shared currency
+    across the codebase.
+  - `overlay.py::overlay_detections(frame, dets_by_class)` → composited RGB frame
+    (colors **by class**, from config); `show_overlay` is display-only.
+  - `frame_extraction.py` → `extract_frames` (quota/all, returns `(N,H,W,3)`),
+    `get_frame_indices` (the sampled source indices), `iter_frames` (streaming
+    generator for tracking), `get_video_fps`. All accept a path relative to
+    `PROJECT_ROOT` **or** an absolute path.
+  - `video_writer.py` → `write_video` (batch) and `open_video_writer` (incremental
+    context manager, used by tracking).
+  - `pipeline.py` (per-frame orchestrator) and `tracking.py` (tracking orchestrator).
+- **`src/data/` — dataset preparation (not inference):**
+  - `metadata.py::build_metadata_csv` → `assets/db_metadata.csv` manifest with a
+    reproducible `split` column (0=reserve, 1=fine-tuning [23], 2=testing [20];
+    seeded; `splits.forced_testing` pins specific videos to testing).
+  - `eval_frames.py::export_testing_frames` → freezes the evaluation frame set
+    (testing videos' quota frames) under `data/testing_frames/` (git-ignored) plus a
+    versioned control CSV `assets/testing_frames.csv`.
+- **`src/utils.py`** → `get_abs_path`, `PROJECT_ROOT`, `show_frames`.
+
+Cross-cutting facts worth knowing before editing:
+- **Classes are config data**: each has `name`, `sam3_prompts`, `color`, `coco_id`
+  under the config `classes` key; code iterates whatever is there, so **adding a
+  class is config-only**, no code change.
+- **`Detection.obj_id` is mode-dependent**: per-frame (unstable) in per-frame mode,
+  **stable** in tracking mode.
+- **Output placement**: heavy outputs (mp4 / extracted frames / GT) go under
+  `outputs/` or `data/` (git-ignored); lightweight manifests (`db_metadata.csv`,
+  `testing_frames.csv`) live in `assets/` (versioned).
+- **Lazy imports**: `torch`, `cv2`, `imageio`, `supervision`/`trackers`, matplotlib
+  are imported *inside* functions so `import src.core` stays cheap — keep this style.
 
 **Ongoing processes (check the corresponding draft before resuming):**
 - **Evaluation of the SAM3-only pipeline — ONGOING / PAUSED.** Multi-task process
@@ -45,6 +90,14 @@ The detection/segmentation/tracking pipelines themselves are **not built yet**.
   frames + versioned `assets/testing_frames.csv`) and `gt_annotation` SDD docs.
   **Paused** waiting on the team's manual annotations in Roboflow; resume with
   `gt_loader` once the COCO ground-truth lands. Tracking evaluation stays deferred.
+- **`video_tracking` — implemented, follow-ups open.** `track_video` is done and
+  ran on the pod. The output mp4 *looks like plain segmentation* because the overlay
+  colors **by class, not by `obj_id`** (the track quality is visible in the JSON, not
+  the video). Open follow-ups (see `.specs/drafts/mvp_sam3_only_roadmap.md` task 5):
+  (a) tune the config `tracking` section to reduce fragmentation
+  (`lost_track_buffer` ↑, `minimum_consecutive_frames` ↑); (b) add a per-`obj_id`
+  overlay so tracking is visible; (c) make the tracked classes configurable to
+  exclude the static `green_floor`.
 
 **Pending / TODO (not yet done):**
 - **Clean up `testing/` scripts to drop the `sys.path` patch.** `src` is now an
@@ -154,14 +207,22 @@ This is the literal protocol from constitution §8. Work and documents are in **
 
 ### Running the test scripts
 
-`testing/` holds standalone manual scripts (run directly, not via pytest):
+`testing/` holds standalone manual scripts (run directly, not via pytest) — there is
+roughly one `test_*.py` per module (`test_env`, `test_abs_dir_func`,
+`test_frame_extraction`, `test_metadata`, `test_eval_frame_export`, `test_sam3_loader`,
+`test_segmentation`, `test_overlay`, `test_video_writer`, `test_pipeline`,
+`test_tracking`):
 ```bash
 python testing/test_env.py             # imports + versions + torch.cuda check
 python testing/test_abs_dir_func.py    # exercises get_abs_path against the configs
 python testing/test_frame_extraction.py  # extract_frames on a real .MOV
 ```
-`test_frame_extraction.py` needs the videos. With the real-files model it runs
-the same **in the container** and **locally** (both read the real `data/raw`).
+**Model/GPU-dependent tests run on the pod, not locally** — anything that calls SAM3
+(`test_sam3_loader`, `test_segmentation`, `test_pipeline`, `test_tracking`) needs the
+`assets/sam3` model + GPU. `test_tracking.py` has two checks (short clip + a full real
+video that is *not* one of the `splits.forced_testing` videos); cap its
+`TEST_B_MAX_FRAMES` for a quick run. `test_frame_extraction.py`/`test_metadata.py`/
+`test_eval_frame_export.py` only need the real videos under `data/raw`.
 In the container, run them after `up`:
 ```bash
 docker compose --env-file .env -f docker/docker-compose.yml up --build -d
