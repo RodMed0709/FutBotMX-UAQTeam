@@ -18,6 +18,7 @@ in-memory o display-only).
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
@@ -122,3 +123,46 @@ def write_video(
         writer.close()
 
     return output_path
+
+
+@contextmanager
+def open_video_writer(output_path: Path | str, fps: float | None = None):
+    """Context manager para escribir un mp4 **frame a frame** (incremental).
+
+    Variante en streaming de ``write_video``: en vez de recibir todos los frames de
+    golpe, abre el writer y entrega una función ``append(frame)`` para añadir cada
+    frame conforme se produce (memoria acotada en videos largos, p. ej. tracking).
+    Comparte codec/fps/creación de carpeta con ``write_video``.
+
+    Args:
+        output_path: ruta completa del mp4 a escribir. Si la carpeta no existe, se
+            crea.
+        fps: cuadros por segundo. Si es ``None``, se usa ``visualization.output_fps``
+            de la configuración.
+
+    Yields:
+        Una función ``append(frame)`` que recibe un ``np.ndarray (H, W, 3) uint8``
+        RGB y lo escribe al video.
+
+    Raises:
+        ValueError: si CONFIG_FILENAME no está y ``fps`` es ``None``.
+    """
+    import imageio
+
+    fps = fps if fps is not None else _load_output_fps()
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    writer = imageio.get_writer(
+        str(output_path),
+        format="FFMPEG",
+        mode="I",
+        fps=fps,
+        codec="libx264",
+        pixelformat="yuv420p",
+    )
+    try:
+        yield writer.append_data
+    finally:
+        writer.close()
