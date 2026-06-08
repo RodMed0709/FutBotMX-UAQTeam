@@ -192,6 +192,35 @@ def extract_frames(video_path: Path, all_frames: bool = False) -> np.ndarray:
     return frames
 
 
+def iter_frames(video_path: Path, max_frames: int | None = None):
+    """Itera los frames de un video **de uno en uno** (streaming), sin cargar todo.
+
+    Pensado para tracking sobre videos largos: a diferencia de ``extract_frames``
+    (que devuelve todo el lote en memoria), este generador decodifica y entrega un
+    frame a la vez, manteniendo la memoria acotada.
+
+    Args:
+        video_path: ruta del video (Path), relativa a PROJECT_ROOT o absoluta, igual
+            que en ``extract_frames``.
+        max_frames: si es ``None``, recorre todos los frames; si es un entero, se
+            acota a los primeros ``max_frames`` (clip de prueba).
+
+    Yields:
+        Tuplas ``(frame_index, frame_rgb)`` donde ``frame_index`` es el índice del
+        frame en el video fuente y ``frame_rgb`` es un ``np.ndarray (H, W, 3)`` RGB.
+
+    Raises:
+        ValueError: si ``video_path`` no es de tipo Path.
+        FileNotFoundError: si la ruta del video no existe o no es un archivo.
+    """
+    abs_path = _resolve_video_path(video_path)
+    reader = decord.VideoReader(str(abs_path))
+    total = len(reader)
+    n = total if max_frames is None else min(int(max_frames), total)
+    for i in range(n):
+        yield i, reader[i].asnumpy()  # (H, W, 3) RGB (bridge nativo)
+
+
 def get_video_fps(video_path: Path) -> float:
     """Devuelve el fps promedio de un video.
 
