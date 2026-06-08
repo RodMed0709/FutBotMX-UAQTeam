@@ -37,6 +37,15 @@ Scaffolding dirs: `src/ assets/ configs/ data/ docker/ models/ notebooks/ output
 `05_pipline_testing`), several of them SAM3 spikes — exploratory, not pipeline code.
 The detection/segmentation/tracking pipelines themselves are **not built yet**.
 
+**Ongoing processes (check the corresponding draft before resuming):**
+- **Evaluation of the SAM3-only pipeline — ONGOING / PAUSED.** Multi-task process
+  (segmentation metrics: mIoU/Boundary IoU/Dice vs a manual ground-truth). Roadmap
+  and live status log: `.specs/drafts/evaluation_sam3_only_roadmap.md` (read its
+  "Estado del proceso (bitácora)" section). Done: `eval_frame_export` (600 testing
+  frames + versioned `assets/testing_frames.csv`) and `gt_annotation` SDD docs.
+  **Paused** waiting on the team's manual annotations in Roboflow; resume with
+  `gt_loader` once the COCO ground-truth lands. Tracking evaluation stays deferred.
+
 **Pending / TODO (not yet done):**
 - **Clean up `testing/` scripts to drop the `sys.path` patch.** `src` is now an
   editable package, so `testing/test_abs_dir_func.py` and
