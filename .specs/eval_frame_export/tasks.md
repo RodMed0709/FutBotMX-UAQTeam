@@ -51,7 +51,7 @@
   - Constantes de módulo: `COLUMNS`, `TESTING_SPLIT`, `GROUP_RANDOM`,
     `GROUP_CENITAL`, `IMAGE_EXT`.
   - `_load_eval_frames_config()` → `(metadata_csv, testing_frames_dir,
-    testing_frames_csv, forced_testing)` leyendo `.env`/JSON (patrón de
+testing_frames_csv, forced_testing)` leyendo `.env`/JSON (patrón de
     `metadata.py`), con `KeyError`/`ValueError` claros.
   - **Verificación:** `_load_eval_frames_config()` devuelve los cuatro valores sobre
     la config real; claves ausentes lanzan el error documentado.
@@ -86,9 +86,9 @@
 
 - [x] **T6 — Exponer la API en `src/data/__init__.py`**
   - Añadir `from src.data.eval_frames import export_testing_frames,
-    validate_testing_frames_schema` (y `__all__`), sin romper los exports existentes.
+validate_testing_frames_schema` (y `__all__`), sin romper los exports existentes.
   - **Verificación:** `from src.data import export_testing_frames,
-    validate_testing_frames_schema` importa sin error.
+validate_testing_frames_schema` importa sin error.
   - **Plan:** §3.1. **Spec:** AC-1.
 
 ---
@@ -112,7 +112,7 @@
 
 ## Fase E — Ejecución en el pod y calidad
 
-- [~] **T8 — Ejecutar la exportación y el test en el pod**
+- [x] **T8 — Ejecutar la exportación y el test en el pod**
   - Correr `testing/test_eval_frame_export.py` **en el pod (RunPod)**; confirmar que
     las imágenes quedan bajo `data/testing_frames/` en el **volumen compartido** y
     que todas las comprobaciones pasan.
@@ -125,11 +125,11 @@
 
 - [x] **T9 — Calidad e importabilidad**
   - `ruff check .` y `black .` sin hallazgos; `from src.data import
-    export_testing_frames, validate_testing_frames_schema` OK.
+export_testing_frames, validate_testing_frames_schema` OK.
   - **Verificación:** lint limpio e import correcto.
   - **Plan:** §5.3. **Spec:** AC-1.
 
-- [ ] **T10 — Commitear el CSV versionado (requiere confirmación)**
+- [x] **T10 — Commitear el CSV versionado (requiere confirmación)**
   - Commitear `assets/testing_frames.csv` (generado en el pod) y los cambios de
     código/config para que la procedencia llegue al equipo. Las imágenes quedan
     git-ignored en el volumen compartido.
@@ -143,15 +143,15 @@
 
 ## Trazabilidad resumida
 
-| Tarea | Plan | Spec (AC) |
-|---|---|---|
-| T1 config + `.gitignore` | §4 | AC-3, AC-5 |
-| T2 helper `get_frame_indices` | §2, §3.5b | AC-6b, AC-12 |
-| T3 esquema + carga config | §3.2, §3.3 | AC-4, AC-8 |
-| T4 selección/grupo/imagen | §3.4, §3.5, §3.6 | AC-2, AC-7 |
-| T5 orquestador + handler | §3.7, §3.8, §3.9 | AC-5, AC-6, AC-6b, AC-9, AC-10, AC-11 |
-| T6 API `__init__` | §3.1 | AC-1 |
-| T7 crear test | §5.1 | AC-9, AC-10, AC-11, AC-13 |
-| T8 ejecutar en el pod | §5.1, §5.2 | AC-13 |
-| T9 calidad/import | §5.3 | AC-1 |
-| T10 commit (confirmación) | §5.2 | — |
+| Tarea                         | Plan             | Spec (AC)                             |
+| ----------------------------- | ---------------- | ------------------------------------- |
+| T1 config + `.gitignore`      | §4               | AC-3, AC-5                            |
+| T2 helper `get_frame_indices` | §2, §3.5b        | AC-6b, AC-12                          |
+| T3 esquema + carga config     | §3.2, §3.3       | AC-4, AC-8                            |
+| T4 selección/grupo/imagen     | §3.4, §3.5, §3.6 | AC-2, AC-7                            |
+| T5 orquestador + handler      | §3.7, §3.8, §3.9 | AC-5, AC-6, AC-6b, AC-9, AC-10, AC-11 |
+| T6 API `__init__`             | §3.1             | AC-1                                  |
+| T7 crear test                 | §5.1             | AC-9, AC-10, AC-11, AC-13             |
+| T8 ejecutar en el pod         | §5.1, §5.2       | AC-13                                 |
+| T9 calidad/import             | §5.3             | AC-1                                  |
+| T10 commit (confirmación)     | §5.2             | —                                     |
