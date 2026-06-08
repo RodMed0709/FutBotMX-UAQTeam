@@ -213,6 +213,9 @@ def track_video(
     import supervision as sv
     from trackers import ByteTrackTracker
 
+    # La firma acepta str|Path; el resto del flujo (get_video_fps, iter_frames)
+    # exige Path, asi que normalizamos aqui.
+    video_path = Path(video_path)
     classes = classes if classes is not None else _load_classes()
     bundle = bundle or load_sam3()
     bytetrack_kwargs, cfg_max_frames, outputs_dir = _load_tracking_config()
