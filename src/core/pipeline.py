@@ -124,6 +124,9 @@ def run_pipeline(
             f"mode '{mode}' no soportado (solo 'per_frame' por ahora)."
         )
 
+    # La firma acepta str|Path; extract_frames/get_frame_indices/get_video_fps
+    # exigen Path, asi que normalizamos aqui.
+    video_path = Path(video_path)
     classes, outputs_dir, config_fps, config = _load_pipeline_config()
 
     # fps de salida: en modo completo, el fps real de la fuente; en cuota
