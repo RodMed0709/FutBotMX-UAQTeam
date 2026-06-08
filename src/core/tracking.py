@@ -29,6 +29,13 @@ from pathlib import Path
 import numpy as np
 
 from src.core.frame_extraction import get_video_fps, iter_frames
+from src.core.inference_schema import (
+    build_header,
+    frame_record,
+    inference_paths,
+    mask_to_bbox_centroid,
+    write_inference_json,
+)
 from src.core.overlay import overlay_detections
 from src.core.sam3_loader import Sam3Bundle, load_sam3
 from src.core.segmentation import _load_classes, detect_classes_in_frame
@@ -90,13 +97,13 @@ def _load_env(env_path: Path) -> dict[str, str]:
     return env
 
 
-def _load_tracking_config() -> tuple[dict, int | None, str]:
+def _load_tracking_config() -> tuple[dict, int | None, str, dict]:
     """Lee la configuración de tracking desde la configuración global.
 
     Returns:
-        Tupla ``(bytetrack_kwargs, max_frames, outputs_dir)``: los parámetros de
-        ByteTrack (con defaults), el tope de frames (``None`` = video completo) y el
-        directorio de salidas.
+        Tupla ``(bytetrack_kwargs, max_frames, outputs_dir, config)``: los parámetros
+        de ByteTrack (con defaults), el tope de frames (``None`` = video completo), el
+        directorio de salidas y el ``config`` completo (para embeberlo como snapshot).
 
     Raises:
         ValueError: si CONFIG_FILENAME no está en el .env.
@@ -122,17 +129,7 @@ def _load_tracking_config() -> tuple[dict, int | None, str]:
     if max_frames is not None:
         max_frames = int(max_frames)
 
-    return bytetrack_kwargs, max_frames, working_dirs["outputs_dir"]
-
-
-def _mask_to_xyxy(mask: np.ndarray) -> tuple[int, int, int, int] | None:
-    """Caja envolvente ``(x1, y1, x2, y2)`` de una máscara booleana; ``None`` si vacía."""
-    import cv2
-
-    x, y, w, h = cv2.boundingRect(mask.astype(np.uint8))
-    if w == 0 or h == 0:
-        return None
-    return x, y, x + w, y + h
+    return bytetrack_kwargs, max_frames, working_dirs["outputs_dir"], config
 
 
 def get_trajectories(
@@ -149,36 +146,28 @@ def get_trajectories(
     }
 
 
-def _write_tracks_json(
-    tracks: dict[int, Track],
-    json_path: Path,
-    video_path: Path | str,
-    class_names: list[str],
-) -> None:
-    """Serializa el índice de tracks a JSON (sin máscaras)."""
-    payload = {
-        "video": str(video_path),
-        "num_tracks": len(tracks),
-        "classes": class_names,
-        "tracks": [
-            {
-                "obj_id": t.obj_id,
-                "class": t.class_name,
-                "observations": [
-                    {
-                        "frame_index": o.frame_index,
-                        "bbox": list(o.bbox),
-                        "centroid": list(o.centroid),
-                        "score": o.score,
-                    }
-                    for o in t.observations
-                ],
-            }
-            for t in sorted(tracks.values(), key=lambda t: t.obj_id)
-        ],
-    }
-    json_path.parent.mkdir(parents=True, exist_ok=True)
-    json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+def _tracks_payload(tracks: dict[int, Track]) -> list[dict]:
+    """Serializa el índice de tracks a la sección ``tracks`` del esquema (sin máscaras).
+
+    Devuelve la lista de tracks (ordenados por ``obj_id``) que se funde en el JSON
+    unificado del entregable; ya no se escribe un archivo ``_tracks.json`` aparte.
+    """
+    return [
+        {
+            "obj_id": t.obj_id,
+            "class": t.class_name,
+            "observations": [
+                {
+                    "frame_index": o.frame_index,
+                    "bbox": list(o.bbox),
+                    "centroid": list(o.centroid),
+                    "score": o.score,
+                }
+                for o in t.observations
+            ],
+        }
+        for t in sorted(tracks.values(), key=lambda t: t.obj_id)
+    ]
 
 
 def track_video(
@@ -187,25 +176,31 @@ def track_video(
     classes: list[dict] | None = None,
     max_frames: int | None = None,
     bundle: Sam3Bundle | None = None,
+    include_masks: bool = False,
 ) -> dict:
     """Trackea un video con detección per-frame (SAM3) + ByteTrack por clase.
 
     Recorre el video en streaming; por frame detecta con ``detect_classes_in_frame``,
     convierte cada máscara a caja y la asocia con un ByteTrack por clase, asignando
-    ``obj_id`` estables y globalmente únicos. Escribe un mp4 con overlay de forma
-    incremental y retiene un índice de tracks ligero (sin máscaras).
+    ``obj_id`` **estables y globalmente únicos** (a diferencia del modo per-frame,
+    donde el ``obj_id`` es inestable). Escribe un mp4 con overlay de forma incremental
+    y un **JSON unificado** (esquema común de inferencia) con la vista frame-indexed
+    (``frames``) y el índice de tracks (``tracks``) en el mismo archivo.
 
     Args:
         video_path: ruta del video (relativa a PROJECT_ROOT o absoluta).
-        output_path: ruta del mp4 de salida. Si es ``None``, se auto-nombra bajo
-            ``working_dirs.outputs_dir`` como ``<stem>_tracked.mp4``.
+        output_path: ruta del mp4 de salida. Si es ``None``, se ubica bajo
+            ``working_dirs.outputs_dir`` como ``inference/<stem>/<stem>.mp4`` y el
+            JSON junto a él.
         classes: lista de clases a trackear. Si es ``None``, todas las del config.
         max_frames: tope de frames (clip). Si es ``None``, usa el valor de la config
             (``tracking.max_frames``); si ese también es ``None``, recorre todo el video.
         bundle: modelo SAM3 cargado. Si es ``None`` se obtiene con ``load_sam3()``.
+        include_masks: si ``True``, cada detección de la vista frame-indexed incluye
+            su máscara en COCO-RLE (requiere ``pycocotools``). Por defecto ``False``.
 
     Returns:
-        ``{"video": <ruta_mp4>, "tracks": <ruta_json>, "index": <dict obj_id->Track>}``.
+        ``{"json": <ruta_json>, "video": <ruta_mp4>, "index": <dict obj_id->Track>}``.
 
     Raises:
         ValueError / KeyError / FileNotFoundError: ver ``_load_tracking_config``.
@@ -218,18 +213,18 @@ def track_video(
     video_path = Path(video_path)
     classes = classes if classes is not None else _load_classes()
     bundle = bundle or load_sam3()
-    bytetrack_kwargs, cfg_max_frames, outputs_dir = _load_tracking_config()
+    bytetrack_kwargs, cfg_max_frames, outputs_dir, config = _load_tracking_config()
     max_frames = max_frames if max_frames is not None else cfg_max_frames
 
     fps = get_video_fps(video_path)
 
-    # Rutas de salida (auto-naming bajo outputs/ si output_path es None).
+    # Rutas de salida (carpeta por video bajo outputs/inference/).
     stem = Path(video_path).stem
     if output_path is not None:
         mp4_path = Path(output_path)
+        json_path = mp4_path.with_name(f"{mp4_path.stem}.json")
     else:
-        mp4_path = PROJECT_ROOT / outputs_dir / f"{stem}_tracked.mp4"
-    json_path = mp4_path.with_name(f"{mp4_path.stem}_tracks.json")
+        json_path, mp4_path = inference_paths(stem, outputs_dir)
 
     # Un tracker ByteTrack por clase (la clase queda determinada por construcción).
     trackers = {
@@ -240,9 +235,15 @@ def track_video(
     global_id: dict[tuple[str, int], int] = {}  # (clase, tracker_id) -> obj_id
     next_obj_id = 0
     tracks: dict[int, Track] = {}
+    frames_records: list[dict] = []
+    resolution: tuple[int, int] | None = None
+    num_frames = 0
 
     with open_video_writer(mp4_path, fps=fps) as append:
         for frame_index, frame in iter_frames(video_path, max_frames):
+            if resolution is None:
+                resolution = (frame.shape[0], frame.shape[1])
+            num_frames += 1
             dets = detect_classes_in_frame(frame, classes=classes, bundle=bundle)
             per_frame: dict[str, list] = {}
 
@@ -253,10 +254,11 @@ def track_video(
                 # Cajas (no vacías) de esta clase para alimentar ByteTrack.
                 boxes, scores, srcs = [], [], []
                 for idx, det in enumerate(cdets):
-                    box = _mask_to_xyxy(det.mask)
-                    if box is None:
+                    geom = mask_to_bbox_centroid(det.mask)
+                    if geom is None:
                         continue
-                    boxes.append(box)
+                    (x, y, w, h), _ = geom
+                    boxes.append((x, y, x + w, y + h))  # xyxy para ByteTrack
                     scores.append(float(det.score))
                     srcs.append(idx)
 
@@ -311,5 +313,22 @@ def track_video(
             composed = overlay_detections(frame, per_frame, classes=classes)
             append(composed)
 
-    _write_tracks_json(tracks, json_path, video_path, [c["name"] for c in classes])
-    return {"video": mp4_path, "tracks": json_path, "index": tracks}
+            # Registro frame-indexed (reusa las máscaras vivas antes de descartarlas).
+            frames_records.append(
+                frame_record(frame_index, per_frame, include_masks=include_masks)
+            )
+
+    header = build_header(
+        video=video_path,
+        mode="tracking",
+        fps=fps,
+        resolution=resolution if resolution is not None else (0, 0),
+        num_frames=num_frames,
+        classes=classes,
+        include_masks=include_masks,
+        config=config,
+    )
+    json_path = write_inference_json(
+        header, frames_records, json_path, tracks=_tracks_payload(tracks)
+    )
+    return {"json": json_path, "video": mp4_path, "index": tracks}

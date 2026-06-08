@@ -54,7 +54,7 @@ def _pick_non_forced_video() -> str:
 def _assert_common(result: dict, *, full_video: bool) -> None:
     """Comprobaciones compartidas por ambas pruebas."""
     mp4_path = Path(result["video"])
-    json_path = Path(result["tracks"])
+    json_path = Path(result["json"])
     index: dict[int, Track] = result["index"]
 
     assert mp4_path.exists(), f"No se creo el mp4: {mp4_path}"
@@ -88,7 +88,7 @@ def main() -> int:
     res_a = track_video(video, max_frames=TEST_A_MAX_FRAMES)
     _assert_common(res_a, full_video=False)
     print(f"  mp4: {res_a['video']}")
-    print(f"  tracks: {len(res_a['index'])}  ->  {res_a['tracks']}")
+    print(f"  tracks: {len(res_a['index'])}  ->  {res_a['json']}")
     # Clases validas.
     clases_a = {t.class_name for t in res_a["index"].values()}
     print(f"  clases en tracks: {clases_a}\n")
@@ -99,7 +99,7 @@ def main() -> int:
     res_b = track_video(video, max_frames=TEST_B_MAX_FRAMES)
     _assert_common(res_b, full_video=True)
     print(f"  mp4: {res_b['video']}")
-    print(f"  tracks: {len(res_b['index'])}  ->  {res_b['tracks']}\n")
+    print(f"  tracks: {len(res_b['index'])}  ->  {res_b['json']}\n")
 
     print("== Resultado ==")
     print("  OK: ambas pruebas de tracking pasaron.")

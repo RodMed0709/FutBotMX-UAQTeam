@@ -23,7 +23,17 @@ from pathlib import Path
 
 import numpy as np
 
-from src.core.frame_extraction import extract_frames, get_video_fps
+from src.core.frame_extraction import (
+    extract_frames,
+    get_frame_indices,
+    get_video_fps,
+)
+from src.core.inference_schema import (
+    build_header,
+    frame_record,
+    inference_paths,
+    write_inference_json,
+)
 from src.core.overlay import overlay_detections
 from src.core.sam3_loader import load_sam3
 from src.core.segmentation import detect_classes_in_frame
@@ -31,8 +41,11 @@ from src.core.video_writer import write_video
 from src.utils import PROJECT_ROOT, get_abs_path
 
 
-def _load_pipeline_config() -> tuple[list[dict], str, float]:
-    """Lee (classes, outputs_dir, output_fps) de la configuracion en una lectura.
+def _load_pipeline_config() -> tuple[list[dict], str, float, dict]:
+    """Lee (classes, outputs_dir, output_fps, config) de la configuracion.
+
+    El ``config`` completo se devuelve para embeberlo como snapshot en el entregado
+    (auto-descripcion del esquema de inferencia).
 
     Raises:
         ValueError: si CONFIG_FILENAME no esta en el .env.
@@ -70,6 +83,7 @@ def _load_pipeline_config() -> tuple[list[dict], str, float]:
         config["classes"],
         working_dirs["outputs_dir"],
         float(visualization["output_fps"]),
+        config,
     )
 
 
@@ -78,18 +92,28 @@ def run_pipeline(
     output_path: Path | None = None,
     all_frames: bool = False,
     mode: str = "per_frame",
+    include_masks: bool = False,
 ) -> dict[str, Path]:
-    """Ejecuta el pipeline por-frame y genera un mp4 anotado + un JSON.
+    """Ejecuta el pipeline por-frame y genera un mp4 anotado + el JSON del esquema.
+
+    El JSON sigue el **esquema comun de inferencia** (ver
+    ``src.core.inference_schema``): cabecera con metadatos auto-descriptivos +
+    ``frames`` con geometria por deteccion y, opcionalmente, las mascaras en
+    COCO-RLE. Aqui el ``obj_id`` de cada deteccion es **inestable** (per-frame): solo
+    es estable en el modo tracking.
 
     Args:
         video_path: ruta del video (relativa a PROJECT_ROOT o absoluta).
-        output_path: ruta del mp4 de salida. Si es ``None``, se auto-nombra bajo
-            ``working_dirs.outputs_dir`` como ``<stem>_annotated.mp4``.
+        output_path: ruta del mp4 de salida. Si es ``None``, se ubica bajo
+            ``working_dirs.outputs_dir`` como ``inference/<stem>/<stem>.mp4`` y el
+            JSON junto a el.
         all_frames: ``False`` (cuota, por defecto) o ``True`` (todos los frames).
         mode: solo ``"per_frame"`` esta implementado.
+        include_masks: si ``True``, cada deteccion incluye su mascara en COCO-RLE
+            (requiere ``pycocotools``). Por defecto ``False`` (JSON ligero).
 
     Returns:
-        ``{"video": <ruta_mp4>, "detections": <ruta_json>}``.
+        ``{"json": <ruta_json>, "video": <ruta_mp4>}``.
 
     Raises:
         NotImplementedError: si ``mode`` no es ``"per_frame"``.
@@ -100,28 +124,27 @@ def run_pipeline(
             f"mode '{mode}' no soportado (solo 'per_frame' por ahora)."
         )
 
-    classes, outputs_dir, config_fps = _load_pipeline_config()
+    classes, outputs_dir, config_fps, config = _load_pipeline_config()
 
     # fps de salida: en modo completo, el fps real de la fuente; en cuota
     # (frames muestreados), el fps de configuracion (slideshow).
     fps = get_video_fps(video_path) if all_frames else config_fps
 
-    # Composicion de rutas de salida.
+    # Rutas de salida (carpeta por video bajo outputs/inference/).
     stem = Path(video_path).stem
     if output_path is not None:
         mp4_path = Path(output_path)
-        json_path = mp4_path.with_name(f"{mp4_path.stem}_detections.json")
+        json_path = mp4_path.with_name(f"{mp4_path.stem}.json")
     else:
-        base = PROJECT_ROOT / outputs_dir
-        mp4_path = base / f"{stem}_annotated.mp4"
-        json_path = base / f"{stem}_detections.json"
-    json_path.parent.mkdir(parents=True, exist_ok=True)
+        json_path, mp4_path = inference_paths(stem, outputs_dir)
 
     # Modelo una sola vez.
     bundle = load_sam3()
 
     frames = extract_frames(video_path, all_frames=all_frames)
     total = len(frames)
+    # Indices REALES en el video fuente (alineados por posicion con extract_frames).
+    source_indices = get_frame_indices(Path(video_path), all_frames=all_frames)
 
     composed: list[np.ndarray] = []
     records: list[dict] = []
@@ -130,26 +153,21 @@ def run_pipeline(
         dets = detect_classes_in_frame(frame, classes=classes, bundle=bundle)
         composed.append(overlay_detections(frame, dets, classes=classes))
         records.append(
-            {
-                "index": i,
-                "detections": {
-                    name: [{"obj_id": d.obj_id, "score": d.score} for d in cdets]
-                    for name, cdets in dets.items()
-                },
-            }
+            frame_record(int(source_indices[i]), dets, include_masks=include_masks)
         )
 
     mp4_path = write_video(np.stack(composed), mp4_path, fps=fps)
 
-    payload = {
-        "video": str(video_path),
-        "mode": mode,
-        "all_frames": all_frames,
-        "fps": fps,
-        "num_frames": total,
-        "classes": [c["name"] for c in classes],
-        "frames": records,
-    }
-    json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    header = build_header(
+        video=video_path,
+        mode="segmentation",
+        fps=fps,
+        resolution=(frames.shape[1], frames.shape[2]),
+        num_frames=total,
+        classes=classes,
+        include_masks=include_masks,
+        config=config,
+    )
+    json_path = write_inference_json(header, records, json_path)
 
-    return {"video": mp4_path, "detections": json_path}
+    return {"json": json_path, "video": mp4_path}
