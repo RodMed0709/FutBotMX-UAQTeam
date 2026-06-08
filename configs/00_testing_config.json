@@ -28,5 +28,12 @@
   "visualization":{
     "overlay_alpha":0.55,
     "output_fps":4
+  },
+  "tracking":{
+    "track_activation_threshold":0.4,
+    "lost_track_buffer":30,
+    "minimum_consecutive_frames":1,
+    "minimum_iou_threshold":0.2,
+    "max_frames":null
   }
 }
