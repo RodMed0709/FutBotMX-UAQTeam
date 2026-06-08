@@ -40,8 +40,8 @@
 
 - [x] **T3 — Builders del registro y de la cabecera**
   - `detection_record(det, include_masks)` (→ `{obj_id, bbox, centroid, score,
-    rle?}`; `None` si máscara vacía); `frame_record(frame_index, dets_by_class,
-    include_masks)`; `build_header(...)` con `SCHEMA_VERSION="1.0"`, `model_version`
+rle?}`; `None` si máscara vacía); `frame_record(frame_index, dets_by_class,
+include_masks)`; `build_header(...)` con `SCHEMA_VERSION="1.0"`, `model_version`
     (`_model_version`: `sam3_dir` + versiones vía `importlib.metadata`, best-effort),
     `timestamp` UTC ISO-8601, `fps`, `resolution`, `num_frames`, `classes`,
     `include_masks`, `config` (snapshot completo).
@@ -53,7 +53,7 @@
 - [x] **T4 — Rutas y escritura**
   - `inference_paths(video_stem, outputs_dir)` → `(json_path, mp4_path)` bajo
     `outputs/inference/<stem>/`; `write_inference_json(header, frames, json_path,
-    tracks=None)` (compone `{**header, frames, tracks?}`, crea carpeta padre, escribe).
+tracks=None)` (compone `{**header, frames, tracks?}`, crea carpeta padre, escribe).
   - **Verificación:** las rutas siguen la convención; el JSON se escribe y recarga
     como dict válido con `frames` (y `tracks` si se pasa).
   - **Plan:** §3.8. **Spec:** AC-6, AC-7.
@@ -102,7 +102,7 @@
   - **Parte B (GPU/pod):** `run_pipeline(..., include_masks=True)` →
     `outputs/inference/<stem>/<stem>.json` (`mode="segmentation"`, geometría + `rle`,
     `frame_index` = `get_frame_indices`); `track_video(..., max_frames=pequeño,
-    include_masks=True)` → **un único** JSON con `frames` **y** `tracks` (sin
+include_masks=True)` → **un único** JSON con `frames` **y** `tracks` (sin
     `_tracks.json`); caso `include_masks=False` → sin `rle` y sin importar
     `pycocotools`.
   - **Verificación:** el script existe; la Parte A es ejecutable **localmente**.
@@ -118,7 +118,7 @@
     sin modelo pasan en local.
   - **Plan:** §5.1. **Spec:** AC-4, AC-9.
 
-- [ ] **T10 — Ejecutar la Parte B en el pod (GPU)**
+- [x] **T10 — Ejecutar la Parte B en el pod (GPU)**
   - Correr la Parte B **en el pod** (modelo SAM3 + GPU). **No se corre en local.**
   - **Verificación:** ambos orquestadores producen el JSON unificado en la carpeta
     por video; tracking lleva `frames` + `tracks` en un solo archivo; `include_masks`
@@ -127,11 +127,11 @@
 
 - [x] **T11 — Calidad e importabilidad**
   - `ruff check .` y `black .` sin hallazgos; `from src.core.inference_schema import
-    write_inference_json, encode_rle, decode_rle` OK.
+write_inference_json, encode_rle, decode_rle` OK.
   - **Verificación:** lint limpio; import correcto.
   - **Plan:** §5.3. **Spec:** AC-1.
 
-- [ ] **T12 — Commit (requiere confirmación)**
+- [x] **T12 — Commit (requiere confirmación)**
   - Commitear módulo/orquestadores/test/requirements. **El agente NO commitea por
     iniciativa propia:** pregunta y espera confirmación (constitución §11).
     Conventional Commits en inglés, scope `inference_schema`.
@@ -142,17 +142,17 @@
 
 ## Trazabilidad resumida
 
-| Tarea | Plan | Spec (AC) |
-|---|---|---|
-| T1 dependencia `pycocotools` | §2, §4 | AC-10 |
-| T2 geometría + RLE | §3.4, §3.5 | AC-4, AC-12 |
-| T3 builders registro/cabecera | §3.2, §3.3 | AC-1, AC-3, AC-5 |
-| T4 rutas + escritura | §3.8 | AC-6, AC-7 |
-| T5 `run_pipeline` esquema común | §3.6, §3.8 | AC-1, AC-2, AC-6, AC-7 |
-| T6 `track_video` JSON unificado | §3.7, §3.8 | AC-1, AC-6, AC-8 |
-| T7 documentar `obj_id` | §3.7 | AC-8 |
-| T8 crear test (A + B) | §5.1, §5.2 | AC-9, AC-11 |
-| T9 ejecutar Parte A (local) | §5.1 | AC-4, AC-9 |
-| T10 ejecutar Parte B (pod) | §5.2 | AC-1, AC-2, AC-6, AC-7, AC-8, AC-12 |
-| T11 calidad/import | §5.3 | AC-1 |
-| T12 commit (confirmación) | — | — |
+| Tarea                           | Plan       | Spec (AC)                           |
+| ------------------------------- | ---------- | ----------------------------------- |
+| T1 dependencia `pycocotools`    | §2, §4     | AC-10                               |
+| T2 geometría + RLE              | §3.4, §3.5 | AC-4, AC-12                         |
+| T3 builders registro/cabecera   | §3.2, §3.3 | AC-1, AC-3, AC-5                    |
+| T4 rutas + escritura            | §3.8       | AC-6, AC-7                          |
+| T5 `run_pipeline` esquema común | §3.6, §3.8 | AC-1, AC-2, AC-6, AC-7              |
+| T6 `track_video` JSON unificado | §3.7, §3.8 | AC-1, AC-6, AC-8                    |
+| T7 documentar `obj_id`          | §3.7       | AC-8                                |
+| T8 crear test (A + B)           | §5.1, §5.2 | AC-9, AC-11                         |
+| T9 ejecutar Parte A (local)     | §5.1       | AC-4, AC-9                          |
+| T10 ejecutar Parte B (pod)      | §5.2       | AC-1, AC-2, AC-6, AC-7, AC-8, AC-12 |
+| T11 calidad/import              | §5.3       | AC-1                                |
+| T12 commit (confirmación)       | —          | —                                   |
