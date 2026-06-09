@@ -23,6 +23,7 @@ El índice de tracks **no** guarda máscaras (memoria acotada). ``supervision``,
 from __future__ import annotations
 
 import json
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -177,30 +178,41 @@ def track_video(
     max_frames: int | None = None,
     bundle: Sam3Bundle | None = None,
     include_masks: bool = False,
+    render_video: bool = True,
 ) -> dict:
     """Trackea un video con detección per-frame (SAM3) + ByteTrack por clase.
 
     Recorre el video en streaming; por frame detecta con ``detect_classes_in_frame``,
     convierte cada máscara a caja y la asocia con un ByteTrack por clase, asignando
     ``obj_id`` **estables y globalmente únicos** (a diferencia del modo per-frame,
-    donde el ``obj_id`` es inestable). Escribe un mp4 con overlay de forma incremental
-    y un **JSON unificado** (esquema común de inferencia) con la vista frame-indexed
-    (``frames``) y el índice de tracks (``tracks``) en el mismo archivo.
+    donde el ``obj_id`` es inestable). Escribe un **JSON unificado** (esquema común de
+    inferencia) con la vista frame-indexed (``frames``) y el índice de tracks
+    (``tracks``) en el mismo archivo.
+
+    El **JSON es el entregable y se escribe siempre**; el mp4 con overlay es
+    **opcional** (``render_video``). Con ``render_video=False`` no se abre el escritor
+    de video ni se compone el overlay (ahorro de CPU/IO para lotes/evaluacion).
 
     Args:
         video_path: ruta del video (relativa a PROJECT_ROOT o absoluta).
         output_path: ruta del mp4 de salida. Si es ``None``, se ubica bajo
             ``working_dirs.outputs_dir`` como ``inference/<stem>/<stem>.mp4`` y el
-            JSON junto a él.
+            JSON junto a él. Con ``render_video=False`` solo se usa para derivar la
+            ruta del JSON (no se escribe video).
         classes: lista de clases a trackear. Si es ``None``, todas las del config.
         max_frames: tope de frames (clip). Si es ``None``, usa el valor de la config
             (``tracking.max_frames``); si ese también es ``None``, recorre todo el video.
         bundle: modelo SAM3 cargado. Si es ``None`` se obtiene con ``load_sam3()``.
         include_masks: si ``True``, cada detección de la vista frame-indexed incluye
             su máscara en COCO-RLE (requiere ``pycocotools``). Por defecto ``False``.
+        render_video: si ``True`` (por defecto, uso de un solo video) genera el mp4
+            con overlay; si ``False`` solo escribe el JSON. Ortogonal a
+            ``include_masks``.
 
     Returns:
-        ``{"json": <ruta_json>, "video": <ruta_mp4>, "index": <dict obj_id->Track>}``.
+        ``{"json": <ruta_json>, "video": <ruta_mp4_o_None>, "index": <dict
+        obj_id->Track>}``. La clave ``"video"`` siempre está presente: vale la ruta
+        del mp4 si ``render_video=True`` y ``None`` si ``render_video=False``.
 
     Raises:
         ValueError / KeyError / FileNotFoundError: ver ``_load_tracking_config``.
@@ -239,7 +251,12 @@ def track_video(
     resolution: tuple[int, int] | None = None
     num_frames = 0
 
-    with open_video_writer(mp4_path, fps=fps) as append:
+    # El mp4 es opcional: con render_video=False usamos nullcontext (no abre imageio
+    # ni crea archivo) y el mismo bucle corre sin escribir video.
+    writer_cm = (
+        open_video_writer(mp4_path, fps=fps) if render_video else nullcontext(None)
+    )
+    with writer_cm as append:
         for frame_index, frame in iter_frames(video_path, max_frames):
             if resolution is None:
                 resolution = (frame.shape[0], frame.shape[1])
@@ -310,8 +327,9 @@ def track_video(
 
                 per_frame[name] = out_list
 
-            composed = overlay_detections(frame, per_frame, classes=classes)
-            append(composed)
+            if render_video:
+                composed = overlay_detections(frame, per_frame, classes=classes)
+                append(composed)
 
             # Registro frame-indexed (reusa las máscaras vivas antes de descartarlas).
             frames_records.append(
@@ -331,4 +349,8 @@ def track_video(
     json_path = write_inference_json(
         header, frames_records, json_path, tracks=_tracks_payload(tracks)
     )
-    return {"json": json_path, "video": mp4_path, "index": tracks}
+    return {
+        "json": json_path,
+        "video": mp4_path if render_video else None,
+        "index": tracks,
+    }

@@ -93,8 +93,9 @@ def run_pipeline(
     all_frames: bool = False,
     mode: str = "per_frame",
     include_masks: bool = False,
-) -> dict[str, Path]:
-    """Ejecuta el pipeline por-frame y genera un mp4 anotado + el JSON del esquema.
+    render_video: bool = True,
+) -> dict[str, Path | None]:
+    """Ejecuta el pipeline por-frame y genera el JSON del esquema (+ mp4 opcional).
 
     El JSON sigue el **esquema comun de inferencia** (ver
     ``src.core.inference_schema``): cabecera con metadatos auto-descriptivos +
@@ -102,18 +103,28 @@ def run_pipeline(
     COCO-RLE. Aqui el ``obj_id`` de cada deteccion es **inestable** (per-frame): solo
     es estable en el modo tracking.
 
+    El **JSON es el entregable y se escribe siempre**; el mp4 anotado es **opcional**
+    (``render_video``). Con ``render_video=False`` no se compone el overlay ni se
+    escribe video (ahorro de CPU/IO para lotes/evaluacion).
+
     Args:
         video_path: ruta del video (relativa a PROJECT_ROOT o absoluta).
         output_path: ruta del mp4 de salida. Si es ``None``, se ubica bajo
             ``working_dirs.outputs_dir`` como ``inference/<stem>/<stem>.mp4`` y el
-            JSON junto a el.
+            JSON junto a el. Con ``render_video=False`` solo se usa para derivar la
+            ruta del JSON (no se escribe video).
         all_frames: ``False`` (cuota, por defecto) o ``True`` (todos los frames).
         mode: solo ``"per_frame"`` esta implementado.
         include_masks: si ``True``, cada deteccion incluye su mascara en COCO-RLE
             (requiere ``pycocotools``). Por defecto ``False`` (JSON ligero).
+        render_video: si ``True`` (por defecto, uso de un solo video) genera el mp4
+            anotado; si ``False`` solo escribe el JSON. Ortogonal a ``mode`` y a
+            ``include_masks``.
 
     Returns:
-        ``{"json": <ruta_json>, "video": <ruta_mp4>}``.
+        ``{"json": <ruta_json>, "video": <ruta_mp4_o_None>}``. La clave ``"video"``
+        siempre esta presente: vale la ruta del mp4 si ``render_video=True`` y
+        ``None`` si ``render_video=False``.
 
     Raises:
         NotImplementedError: si ``mode`` no es ``"per_frame"``.
@@ -154,12 +165,16 @@ def run_pipeline(
     for i, frame in enumerate(frames):
         print(f"  frame {i + 1}/{total}")
         dets = detect_classes_in_frame(frame, classes=classes, bundle=bundle)
-        composed.append(overlay_detections(frame, dets, classes=classes))
+        if render_video:
+            composed.append(overlay_detections(frame, dets, classes=classes))
         records.append(
             frame_record(int(source_indices[i]), dets, include_masks=include_masks)
         )
 
-    mp4_path = write_video(np.stack(composed), mp4_path, fps=fps)
+    # El mp4 es opcional: con render_video=False no se compone overlay ni se escribe.
+    mp4_out = (
+        write_video(np.stack(composed), mp4_path, fps=fps) if render_video else None
+    )
 
     header = build_header(
         video=video_path,
@@ -173,4 +188,4 @@ def run_pipeline(
     )
     json_path = write_inference_json(header, records, json_path)
 
-    return {"json": json_path, "video": mp4_path}
+    return {"json": json_path, "video": mp4_out}
