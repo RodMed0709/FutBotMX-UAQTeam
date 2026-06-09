@@ -119,7 +119,7 @@
   - **Verificación:** selección, skip-done, aislamiento y resumen pasan en local.
   - **Plan:** §5.1. **Spec:** AC-2, AC-3, AC-6, AC-7, AC-8, AC-12.
 
-- [ ] **T12 — Ejecutar la Parte B en el pod (GPU)**
+- [x] **T12 — Ejecutar la Parte B en el pod (GPU)**
   - Correr la Parte B **en el pod** (SAM3 + GPU). **No se corre en local.**
   - **Verificación:** lote de 3 reservados en ambos modos; video + JSON extendido;
     carga única; segunda corrida `skipped`; resumen correcto.
@@ -136,7 +136,7 @@
   - **Verificación:** `CLAUDE.md` refleja la capa de lotes.
   - **Plan:** §4. **Spec:** AC-1.
 
-- [ ] **T15 — Commit (requiere confirmación)**
+- [x] **T15 — Commit (requiere confirmación)**
   - Commitear `src/core/batch.py`, el test y `CLAUDE.md`. **El agente NO commitea por
     iniciativa propia:** pregunta y espera confirmación (constitución §11).
     Conventional Commits en inglés, scope `batch_inference`.
