@@ -35,7 +35,7 @@ from src.core.inference_schema import (
     write_inference_json,
 )
 from src.core.overlay import overlay_detections
-from src.core.sam3_loader import load_sam3
+from src.core.sam3_loader import Sam3Bundle, load_sam3
 from src.core.segmentation import detect_classes_in_frame
 from src.core.video_writer import write_video
 from src.utils import PROJECT_ROOT, get_abs_path
@@ -92,6 +92,8 @@ def run_pipeline(
     output_path: Path | None = None,
     all_frames: bool = False,
     mode: str = "per_frame",
+    classes: list[dict] | None = None,
+    bundle: Sam3Bundle | None = None,
     include_masks: bool = False,
     render_video: bool = True,
 ) -> dict[str, Path | None]:
@@ -115,6 +117,10 @@ def run_pipeline(
             ruta del JSON (no se escribe video).
         all_frames: ``False`` (cuota, por defecto) o ``True`` (todos los frames).
         mode: solo ``"per_frame"`` esta implementado.
+        classes: lista de clases a detectar. Si es ``None`` (por defecto), usa las del
+            config. Permite filtrar clases por llamada (lo usa la fachada/lotes).
+        bundle: modelo SAM3 precargado. Si es ``None`` (por defecto) se obtiene con
+            ``load_sam3()``; pasarlo permite reutilizar el modelo entre videos.
         include_masks: si ``True``, cada deteccion incluye su mascara en COCO-RLE
             (requiere ``pycocotools``). Por defecto ``False`` (JSON ligero).
         render_video: si ``True`` (por defecto, uso de un solo video) genera el mp4
@@ -138,7 +144,8 @@ def run_pipeline(
     # La firma acepta str|Path; extract_frames/get_frame_indices/get_video_fps
     # exigen Path, asi que normalizamos aqui.
     video_path = Path(video_path)
-    classes, outputs_dir, config_fps, config = _load_pipeline_config()
+    cfg_classes, outputs_dir, config_fps, config = _load_pipeline_config()
+    classes = classes if classes is not None else cfg_classes
 
     # fps de salida: en modo completo, el fps real de la fuente; en cuota
     # (frames muestreados), el fps de configuracion (slideshow).
@@ -152,8 +159,8 @@ def run_pipeline(
     else:
         json_path, mp4_path = inference_paths(stem, outputs_dir)
 
-    # Modelo una sola vez.
-    bundle = load_sam3()
+    # Modelo una sola vez (o reusa el bundle precargado que se pase).
+    bundle = bundle or load_sam3()
 
     frames = extract_frames(video_path, all_frames=all_frames)
     total = len(frames)

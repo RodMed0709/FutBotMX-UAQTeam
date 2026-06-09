@@ -16,26 +16,35 @@ two pipelines that share the same dataset, config conventions and methodology:
 
 The **SAM3-only pipeline is built**. The constitution's YOLO→SAM3→ByteTrack "base
 pipeline" and the fine-tuning pipeline are **not** (YOLO is unexplored — there is a
-stray `notebooks/fase_0/yolov8n.pt` but no YOLO code). Two inference paths exist,
-both config-driven and reusing the same building blocks:
+stray `notebooks/fase_0/yolov8n.pt` but no YOLO code). A single inference facade
+fronts two implementations, all config-driven and reusing the same building blocks:
 
-- **Per-frame** (`src/core/pipeline.py::run_pipeline`, `mode="per_frame"`):
+- **Facade** (`src/core/inference.py::run_inference`): the **single entry point per
+  video**, with `mode="segmentation" | "tracking"`. Thin router — validates
+  `mode`/`sampling` (raises before loading SAM3), resolves frame sampling per mode
+  (`sampling="auto"` → segmentation=quota, tracking=contiguous-prefix; rejects
+  `quota`+tracking and `contiguous`+segmentation), unifies the return to
+  `{"json", "video", "index"}` (`index` is `None` in segmentation), and propagates a
+  preloaded `bundle` to both modes. Does **not** reimplement the inference loop.
+- **Segmentation** (`src/core/pipeline.py::run_pipeline`, `mode="per_frame"`):
   `video → extract_frames → detect_classes_in_frame (per frame, per class) →
-  overlay → mp4 + JSON`. `obj_id`s are **not** stable across frames here.
+  overlay → mp4 + JSON`. `obj_id`s are **not** stable across frames here. Now also
+  accepts `classes`/`bundle` (like `track_video`) for per-call class filtering and
+  model reuse.
 - **Tracking** (`src/core/tracking.py::track_video`): streams the video frame by
   frame, reuses the per-frame detector, derives boxes from masks and associates
   them with **ByteTrack** (`trackers.ByteTrackTracker`, one tracker per class) into
   **stable, globally-unique `obj_id`s**. Handles full video without OOM. Output:
   incremental mp4 + a tracker-agnostic track index (`Track`/`TrackObservation`) as
-  JSON (no masks). `mode="tracking"` in `pipeline.py` is still a stub
-  (`NotImplementedError`) — wiring it in is a future task.
+  JSON (no masks).
 
 Atomic tasks done (each with `.specs/<task>/{spec,plan,tasks}.md`): env_setup,
 editable_module, abs_dir_func, frame_extraction, abs_video_path, data_volume_mounts,
 frame_visualization, sam3_loader, classes_config, text_segmentation,
 segmentation_overlay, video_writer, pipeline_runner, source_fps,
 csv_dataset_metadata, forced_testing_split, eval_frame_export, gt_annotation
-(human/process task — no code), video_tracking.
+(human/process task — no code), video_tracking, inference_schema, optional_render,
+unified_inference.
 
 `notebooks/fase_0/` holds numbered exploration notebooks (SAM3 spikes) — exploratory
 reference, **not** pipeline code; the production code lives under `src/`.
@@ -60,7 +69,8 @@ conventions) and the modules compose into the two pipelines above:
     `PROJECT_ROOT` **or** an absolute path.
   - `video_writer.py` → `write_video` (batch) and `open_video_writer` (incremental
     context manager, used by tracking).
-  - `pipeline.py` (per-frame orchestrator) and `tracking.py` (tracking orchestrator).
+  - `inference.py::run_inference` (single facade) routing to `pipeline.py`
+    (per-frame orchestrator) and `tracking.py` (tracking orchestrator).
 - **`src/data/` — dataset preparation (not inference):**
   - `metadata.py::build_metadata_csv` → `assets/db_metadata.csv` manifest with a
     reproducible `split` column (0=reserve, 1=fine-tuning [23], 2=testing [20];
@@ -211,7 +221,7 @@ This is the literal protocol from constitution §8. Work and documents are in **
 roughly one `test_*.py` per module (`test_env`, `test_abs_dir_func`,
 `test_frame_extraction`, `test_metadata`, `test_eval_frame_export`, `test_sam3_loader`,
 `test_segmentation`, `test_overlay`, `test_video_writer`, `test_pipeline`,
-`test_tracking`):
+`test_tracking`, `test_optional_render`, `test_unified_inference`):
 ```bash
 python testing/test_env.py             # imports + versions + torch.cuda check
 python testing/test_abs_dir_func.py    # exercises get_abs_path against the configs
