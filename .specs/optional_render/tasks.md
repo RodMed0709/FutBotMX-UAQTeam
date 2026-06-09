@@ -97,7 +97,7 @@
   - **Verificación:** la introspección de firma pasa en local.
   - **Plan:** §5.1. **Spec:** AC-10.
 
-- [ ] **T9 — Ejecutar la Parte B en el pod (GPU)**
+- [x] **T9 — Ejecutar la Parte B en el pod (GPU)**
   - Correr la Parte B **en el pod** (modelo SAM3 + GPU). **No se corre en local.**
   - **Verificación:** ambos modos con ON/OFF; JSON siempre, mp4 condicional, forma del
     retorno correcta; caso OFF+masks produce `rle` sin video.
@@ -109,7 +109,7 @@
   - **Verificación:** lint limpio; imports correctos.
   - **Plan:** §5.3. **Spec:** AC-9.
 
-- [ ] **T11 — Commit (requiere confirmación)**
+- [x] **T11 — Commit (requiere confirmación)**
   - Commitear `pipeline.py`, `tracking.py` y el test. **El agente NO commitea por
     iniciativa propia:** pregunta y espera confirmación (constitución §11).
     Conventional Commits en inglés, scope `optional_render`.
