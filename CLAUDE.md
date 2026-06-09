@@ -44,7 +44,7 @@ frame_visualization, sam3_loader, classes_config, text_segmentation,
 segmentation_overlay, video_writer, pipeline_runner, source_fps,
 csv_dataset_metadata, forced_testing_split, eval_frame_export, gt_annotation
 (human/process task — no code), video_tracking, inference_schema, optional_render,
-unified_inference.
+unified_inference, batch_inference.
 
 `notebooks/fase_0/` holds numbered exploration notebooks (SAM3 spikes) — exploratory
 reference, **not** pipeline code; the production code lives under `src/`.
@@ -71,6 +71,10 @@ conventions) and the modules compose into the two pipelines above:
     context manager, used by tracking).
   - `inference.py::run_inference` (single facade) routing to `pipeline.py`
     (per-frame orchestrator) and `tracking.py` (tracking orchestrator).
+  - `batch.py::run_batch` — sequential batch layer over `run_inference`: selects
+    videos from `db_metadata.csv` (by `split` or explicit list), loads SAM3 **once**,
+    skips already-done videos (output JSON exists), isolates per-video errors, render
+    OFF by default, and returns a per-video summary (`done`/`skipped`/`failed`).
 - **`src/data/` — dataset preparation (not inference):**
   - `metadata.py::build_metadata_csv` → `assets/db_metadata.csv` manifest with a
     reproducible `split` column (0=reserve, 1=fine-tuning [23], 2=testing [20];
@@ -221,7 +225,8 @@ This is the literal protocol from constitution §8. Work and documents are in **
 roughly one `test_*.py` per module (`test_env`, `test_abs_dir_func`,
 `test_frame_extraction`, `test_metadata`, `test_eval_frame_export`, `test_sam3_loader`,
 `test_segmentation`, `test_overlay`, `test_video_writer`, `test_pipeline`,
-`test_tracking`, `test_optional_render`, `test_unified_inference`):
+`test_tracking`, `test_optional_render`, `test_unified_inference`,
+`test_batch_inference`):
 ```bash
 python testing/test_env.py             # imports + versions + torch.cuda check
 python testing/test_abs_dir_func.py    # exercises get_abs_path against the configs
