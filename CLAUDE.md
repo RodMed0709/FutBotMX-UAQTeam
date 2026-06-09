@@ -75,6 +75,13 @@ conventions) and the modules compose into the two pipelines above:
     videos from `db_metadata.csv` (by `split` or explicit list), loads SAM3 **once**,
     skips already-done videos (output JSON exists), isolates per-video errors, render
     OFF by default, and returns a per-video summary (`done`/`skipped`/`failed`).
+  - `track_overlay.py::render_obj_id_overlay` — **decoupled post-pass** that makes
+    tracking visible: reads a tracking JSON + the source video and writes a **new** mp4
+    (`<stem>_obj_id.mp4`) with **box + `name #id` label + per-`obj_id` trajectory**
+    (color **by class**, sliding window of N frames), optional mask fill if the JSON
+    has `rle`. No SAM3, no re-inference; excludes configurable classes
+    (`visualization.overlay_excluded_classes`, default `green_floor`). The live
+    `overlay_detections` (mask fill by class) is untouched.
 - **`src/data/` — dataset preparation (not inference):**
   - `metadata.py::build_metadata_csv` → `assets/db_metadata.csv` manifest with a
     reproducible `split` column (0=reserve, 1=fine-tuning [23], 2=testing [20];
@@ -226,7 +233,7 @@ roughly one `test_*.py` per module (`test_env`, `test_abs_dir_func`,
 `test_frame_extraction`, `test_metadata`, `test_eval_frame_export`, `test_sam3_loader`,
 `test_segmentation`, `test_overlay`, `test_video_writer`, `test_pipeline`,
 `test_tracking`, `test_optional_render`, `test_unified_inference`,
-`test_batch_inference`):
+`test_batch_inference`, `test_obj_id_overlay`):
 ```bash
 python testing/test_env.py             # imports + versions + torch.cuda check
 python testing/test_abs_dir_func.py    # exercises get_abs_path against the configs
