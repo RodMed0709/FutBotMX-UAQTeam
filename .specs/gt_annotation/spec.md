@@ -8,9 +8,8 @@
   tarea o proceso").
 - **Estado:** Definición del *qué* y el *porqué*. **No** implica crear ni modificar
   código.
-- **Proceso al que pertenece:** evaluación del pipeline SAM3-only (ver
-  `.specs/drafts/evaluation_sam3_only_roadmap.md`, tarea 2). **Depende de** la tarea
-  1 (`eval_frame_export`, completa).
+- **Proceso al que pertenece:** evaluación del pipeline SAM3-only (roadmap de
+  evaluación, tarea 2). **Depende de** la tarea 1 (`eval_frame_export`, completa).
 
 ---
 

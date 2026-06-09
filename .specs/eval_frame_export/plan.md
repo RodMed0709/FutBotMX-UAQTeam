@@ -3,7 +3,7 @@
 - **Tarea atómica:** `eval_frame_export`
 - **Paso de la metodología:** 3 (Planificación técnica)
 - **Spec de referencia:** [`spec.md`](./spec.md)
-- **Borrador de referencia:** [`../drafts/evaluation_sam3_only_roadmap.md`](../drafts/evaluation_sam3_only_roadmap.md) (tarea 1)
+- **Proceso de referencia:** roadmap de evaluación del pipeline SAM3-only (tarea 1)
 - **Estado:** Diseño técnico. **No** implica crear ni modificar código fuente aún.
 
 ---

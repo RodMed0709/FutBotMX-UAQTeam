@@ -3,7 +3,6 @@
 - **Tarea atómica:** `csv_dataset_metadata`
 - **Paso de la metodología:** 3 (Planificación técnica)
 - **Spec de referencia:** [`spec.md`](./spec.md)
-- **Borrador de referencia:** [`../drafts/csv_dataset_metadata.md`](../drafts/csv_dataset_metadata.md)
 - **Estado:** Diseño técnico. **No** implica crear ni modificar código fuente aún.
 
 ---

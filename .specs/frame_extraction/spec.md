@@ -132,7 +132,6 @@
 
 ## 7. Siguientes pasos (metodología)
 
-1. Elaborar `plan.md` con el detalle técnico de implementación
-   (apoyándose en el borrador `.specs/drafts/frame_extraction/00_plan.md`).
+1. Elaborar `plan.md` con el detalle técnico de implementación.
 2. Derivar `tasks.md` con las tareas ejecutables.
 3. Implementar (paso 5) únicamente después de los anteriores.

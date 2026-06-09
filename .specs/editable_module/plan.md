@@ -3,7 +3,6 @@
 - **Tarea atómica:** `editable_module`
 - **Paso de la metodología:** 3 (Planificación técnica)
 - **Spec de referencia:** [`spec.md`](./spec.md)
-- **Borrador de referencia:** `.specs/drafts/modulo_editable/plan.md`
 - **Estado:** Diseño técnico. **No** implica crear ni modificar código fuente aún.
 
 ---

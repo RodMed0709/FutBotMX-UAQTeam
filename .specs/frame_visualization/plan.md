@@ -3,7 +3,6 @@
 - **Tarea atómica:** `frame_visualization`
 - **Paso de la metodología:** 3 (Planificación técnica)
 - **Spec de referencia:** [`spec.md`](./spec.md)
-- **Borrador de referencia:** `.specs/drafts/frame_visualization/00_plan.md`
 - **Estado:** Diseño técnico. **No** implica crear ni modificar código fuente aún.
 
 ---

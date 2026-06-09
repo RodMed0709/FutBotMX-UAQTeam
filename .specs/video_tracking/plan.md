@@ -3,7 +3,7 @@
 - **Tarea atómica:** `video_tracking`
 - **Paso de la metodología:** 3 (Planificación técnica)
 - **Spec de referencia:** [`spec.md`](./spec.md)
-- **Borrador de referencia:** [`../drafts/mvp_sam3_only_roadmap.md`](../drafts/mvp_sam3_only_roadmap.md) (tarea 5)
+- **Proceso de referencia:** roadmap del MVP SAM3-only (tarea 5)
 - **Estado:** Diseño técnico. **No** implica crear ni modificar código fuente aún.
 
 ---

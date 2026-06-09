@@ -99,8 +99,7 @@
   cómo se accede a ella.
 - Esta especificación **no** define el *cómo* técnico (archivo de empaquetado
   —el borrador sugiere `setup.py`—, comando `pip install -e`, ni los cambios
-  concretos en `docker/`); todo ello corresponde al `plan.md` de esta carpeta,
-  que parte del borrador `.specs/drafts/modulo_editable/plan.md`.
+  concretos en `docker/`); todo ello corresponde al `plan.md` de esta carpeta.
 
 ---
 

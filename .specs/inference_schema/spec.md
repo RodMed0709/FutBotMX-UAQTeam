@@ -4,11 +4,10 @@
 - **Paso de la metodología:** 2 (Especificación)
 - **Estado:** Definición del *qué* y el *porqué*. **No** implica crear ni modificar
   código aún.
-- **Proceso al que pertenece:** Pipeline de inferencia unificado + batch (ver
-  `.specs/drafts/unified_pipeline_roadmap.md`, tarea 1). **Cimiento** del que
-  dependen `optional_render`, `unified_inference`, `batch_inference` y —de forma
-  transversal— `prediction_export` del roadmap de evaluación
-  (`.specs/drafts/evaluation_sam3_only_roadmap.md`, tarea 4).
+- **Proceso al que pertenece:** Pipeline de inferencia unificado + batch (roadmap
+  del pipeline unificado, tarea 1). **Cimiento** del que dependen
+  `optional_render`, `unified_inference`, `batch_inference` y —de forma
+  transversal— `prediction_export` del roadmap de evaluación (tarea 4).
 - **Depende de:** los dos caminos de inferencia existentes
   (`pipeline.py::run_pipeline` y `tracking.py::track_video`) y de las piezas que ya
   componen (`detect_classes_in_frame`, `overlay_detections`, `frame_extraction`).

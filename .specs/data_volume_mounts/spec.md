@@ -203,5 +203,5 @@ repo"**:
   reales bajo `data/raw`/`assets/sam3`").
 
 **Pendiente relacionado:** el script `bootstrap_data` (descarga idempotente) que
-automatiza poblar esos dirs reales. Ver `.specs/drafts/bootstrap_data.md` y el
-TODO en `CLAUDE.md`. La estrategia de RunPod sigue por definir.
+automatiza poblar esos dirs reales (ver la futura tarea `bootstrap_data` y el
+TODO en `CLAUDE.md`). La estrategia de RunPod sigue por definir.

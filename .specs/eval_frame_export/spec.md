@@ -4,9 +4,8 @@
 - **Paso de la metodología:** 2 (Especificación)
 - **Estado:** Definición del *qué* y el *porqué*. **No** implica crear ni
   modificar código aún.
-- **Proceso al que pertenece:** evaluación del pipeline SAM3-only (ver
-  `.specs/drafts/evaluation_sam3_only_roadmap.md`, tarea 1). Es el **cimiento** del
-  proceso de evaluación.
+- **Proceso al que pertenece:** evaluación del pipeline SAM3-only (roadmap de
+  evaluación, tarea 1). Es el **cimiento** del proceso de evaluación.
 
 ---
 

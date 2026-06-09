@@ -3,7 +3,7 @@
 - **Tarea atómica:** `inference_schema`
 - **Paso de la metodología:** 3 (Planificación técnica)
 - **Spec de referencia:** [`spec.md`](./spec.md)
-- **Borrador de referencia:** [`../drafts/unified_pipeline_roadmap.md`](../drafts/unified_pipeline_roadmap.md) (tarea 1)
+- **Proceso de referencia:** roadmap del pipeline de inferencia unificado + batch (tarea 1)
 - **Estado:** Diseño técnico. **No** implica crear ni modificar código fuente aún.
 
 ---

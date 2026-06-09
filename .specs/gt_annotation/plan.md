@@ -3,7 +3,7 @@
 - **Tarea atómica:** `gt_annotation`
 - **Paso de la metodología:** 3 (Planificación)
 - **Spec de referencia:** [`spec.md`](./spec.md)
-- **Borrador de referencia:** [`../drafts/evaluation_sam3_only_roadmap.md`](../drafts/evaluation_sam3_only_roadmap.md) (tarea 2)
+- **Proceso de referencia:** roadmap de evaluación del pipeline SAM3-only (tarea 2)
 - **Naturaleza:** tarea de **proceso, no de código**. Este `plan.md` describe el
   **flujo operativo en Roboflow** y **cierra las decisiones de la guía** que el spec
   dejó abiertas. No define implementación de código.

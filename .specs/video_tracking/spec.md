@@ -4,9 +4,9 @@
 - **Paso de la metodología:** 2 (Especificación)
 - **Estado:** Definición del *qué* y el *porqué*. **No** implica crear ni modificar
   código aún.
-- **Proceso al que pertenece:** MVP SAM3-only (ver
-  `.specs/drafts/mvp_sam3_only_roadmap.md`, tarea 5). **Depende de:** el pipeline
-  per-frame existente (`detect_classes_in_frame`) y `sam3_loader`.
+- **Proceso al que pertenece:** MVP SAM3-only (roadmap del MVP, tarea 5).
+  **Depende de:** el pipeline per-frame existente (`detect_classes_in_frame`) y
+  `sam3_loader`.
 
 ---
 
