@@ -42,8 +42,8 @@
 
 - [x] **T3 — Crear el módulo y la firma de la fachada**
   - Nuevo `src/core/inference.py` con `run_inference(video_path, mode="segmentation",
-    output_path=None, classes=None, sampling="auto", max_frames=None, bundle=None,
-    include_masks=False, render_video=True) -> dict`. Importar `run_pipeline` y
+output_path=None, classes=None, sampling="auto", max_frames=None, bundle=None,
+include_masks=False, render_video=True) -> dict`. Importar `run_pipeline` y
     `track_video` a nivel de módulo (sin imports de torch en la fachada).
   - **Verificación:** `from src.core.inference import run_inference`; firma con los
     defaults del plan.
@@ -61,9 +61,9 @@
 
 - [x] **T5 — Enrutado a las implementaciones + retorno unificado**
   - `segmentation` → `run_pipeline(..., all_frames=<resuelto>, mode="per_frame",
-    classes, bundle, include_masks, render_video)`, devolviendo
+classes, bundle, include_masks, render_video)`, devolviendo
     `{"json", "video", "index": None}`. `tracking` → `track_video(...,
-    max_frames=<resuelto>, classes, bundle, include_masks, render_video)` tal cual
+max_frames=<resuelto>, classes, bundle, include_masks, render_video)` tal cual
     (ya trae `"index"`). `max_frames` no se pasa a `run_pipeline` (ignorado en seg,
     documentado).
   - **Verificación:** revisión de código; retorno con forma única
@@ -119,7 +119,7 @@
   - **Verificación:** firma correcta y todos los casos `ValueError` pasan en local.
   - **Plan:** §5.1. **Spec:** AC-4, AC-5, AC-6, AC-12.
 
-- [ ] **T10 — Ejecutar la Parte B en el pod (GPU)**
+- [x] **T10 — Ejecutar la Parte B en el pod (GPU)**
   - Correr la Parte B **en el pod** (SAM3 + GPU). **No se corre en local.**
   - **Verificación:** ambos modos; retorno unificado correcto; muestreo por modo;
     reuso de bundle sin recarga; caso OFF+masks produce `rle` sin video.
@@ -127,7 +127,7 @@
 
 - [x] **T11 — Calidad e importabilidad**
   - `ruff check .` y `black .` sin hallazgos; `from src.core.inference import
-    run_inference` y `from src.core.pipeline import run_pipeline` (firma ampliada) OK.
+run_inference` y `from src.core.pipeline import run_pipeline` (firma ampliada) OK.
   - **Verificación:** lint limpio; imports correctos.
   - **Plan:** §5.3. **Spec:** AC-11.
 
@@ -138,7 +138,7 @@
   - **Verificación:** `CLAUDE.md` refleja la fachada y el estado del modo tracking.
   - **Plan:** §4. **Spec:** AC-3.
 
-- [ ] **T13 — Commit (requiere confirmación)**
+- [x] **T13 — Commit (requiere confirmación)**
   - Commitear `src/core/inference.py`, `pipeline.py`, el test y `CLAUDE.md`. **El
     agente NO commitea por iniciativa propia:** pregunta y espera confirmación
     (constitución §11). Conventional Commits en inglés, scope `unified_inference`.
@@ -149,21 +149,21 @@
 
 ## Trazabilidad resumida
 
-| Tarea                                  | Plan       | Spec (AC)                          |
-| -------------------------------------- | ---------- | ---------------------------------- |
-| T1 `run_pipeline` + `bundle`/`classes` | §3.5       | AC-10                              |
-| T2 documentar params `run_pipeline`    | §3.5       | AC-10                              |
-| T3 módulo + firma de la fachada        | §3.1, §3.2 | AC-1, AC-2, AC-7                   |
-| T4 validación `mode`/`sampling`        | §3.3       | AC-4, AC-5, AC-6                   |
-| T5 enrutado + retorno unificado        | §3.3, §3.4 | AC-3, AC-8, AC-9, AC-10            |
-| T6 docstring de la fachada             | §3.2, §7   | AC-7, AC-8                         |
-| T7 anti-alcance (no-regresión)         | §3.6, §4   | AC-11                              |
-| T8 crear test (A + B)                  | §5.1, §5.2 | AC-12                              |
-| T9 ejecutar Parte A (local)            | §5.1       | AC-4, AC-5, AC-6, AC-12            |
-| T10 ejecutar Parte B (pod)             | §5.2       | AC-1, AC-2, AC-3, AC-7, AC-8, AC-10|
-| T11 calidad/import                     | §5.3       | AC-11                              |
-| T12 documentación de cierre            | §4         | AC-3                               |
-| T13 commit (confirmación)              | —          | —                                  |
+| Tarea                                  | Plan       | Spec (AC)                           |
+| -------------------------------------- | ---------- | ----------------------------------- |
+| T1 `run_pipeline` + `bundle`/`classes` | §3.5       | AC-10                               |
+| T2 documentar params `run_pipeline`    | §3.5       | AC-10                               |
+| T3 módulo + firma de la fachada        | §3.1, §3.2 | AC-1, AC-2, AC-7                    |
+| T4 validación `mode`/`sampling`        | §3.3       | AC-4, AC-5, AC-6                    |
+| T5 enrutado + retorno unificado        | §3.3, §3.4 | AC-3, AC-8, AC-9, AC-10             |
+| T6 docstring de la fachada             | §3.2, §7   | AC-7, AC-8                          |
+| T7 anti-alcance (no-regresión)         | §3.6, §4   | AC-11                               |
+| T8 crear test (A + B)                  | §5.1, §5.2 | AC-12                               |
+| T9 ejecutar Parte A (local)            | §5.1       | AC-4, AC-5, AC-6, AC-12             |
+| T10 ejecutar Parte B (pod)             | §5.2       | AC-1, AC-2, AC-3, AC-7, AC-8, AC-10 |
+| T11 calidad/import                     | §5.3       | AC-11                               |
+| T12 documentación de cierre            | §4         | AC-3                                |
+| T13 commit (confirmación)              | —          | —                                   |
 
 ---
 
