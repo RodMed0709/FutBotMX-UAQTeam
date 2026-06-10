@@ -173,11 +173,21 @@ def part_a_local() -> None:
             assert all(keys <= set(r) for r in res), "entradas con forma incompleta"
             print("  [ok] resumen estructurado por video")
 
-            # 4b) Timing: done con valores; failed con None (sin CUDA local).
+            # 4b) Timing: done con valores; failed con None. peak_vram depende de CUDA
+            #     (float con CUDA aunque el fake no use GPU; None sin CUDA).
             done2, failed2 = by_id[2], by_id[3]
             assert isinstance(done2["elapsed_s"], float) and done2["elapsed_s"] > 0
             assert done2["fps"] == 30 / done2["elapsed_s"], "fps = num_frames/elapsed"
-            assert done2["peak_vram_mb"] is None, "sin CUDA -> peak_vram_mb None"
+            try:
+                import torch
+
+                _cuda = torch.cuda.is_available()
+            except Exception:
+                _cuda = False
+            if _cuda:
+                assert isinstance(done2["peak_vram_mb"], float), "con CUDA -> float"
+            else:
+                assert done2["peak_vram_mb"] is None, "sin CUDA -> None"
             assert all(failed2[k] is None for k in ("elapsed_s", "peak_vram_mb", "fps"))
             # skipped tambien lleva los 3 en None.
             res_sk = run_batch(videos=[2])  # JSON de C ya existe -> skipped
