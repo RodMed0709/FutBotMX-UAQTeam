@@ -5,7 +5,8 @@
     "outputs_dir":"outputs",
     "metadata_csv":"assets/db_metadata.csv",
     "testing_frames_dir":"data/testing_frames",
-    "testing_frames_csv":"assets/testing_frames.csv"
+    "testing_frames_csv":"assets/testing_frames.csv",
+    "yolo_weights":"assets/yolo/best.pt"
   },
   "seeds":{
     "split":42
@@ -21,8 +22,9 @@
     "frame_quota":30
   },
   "classes":[
-    { "name": "robot",       "sam3_prompts": ["robot"],       "color": [60, 130, 255], "coco_id": 1 },
-    { "name": "orange_ball", "sam3_prompts": ["orange ball"], "color": [10, 35, 80],  "coco_id": 2 },
+    { "name": "robot",       "sam3_prompts": ["robot"],       "color": [60, 130, 255], "coco_id": 1, "yolo_id": 0 },
+    { "name": "orange_ball", "sam3_prompts": ["orange ball"], "color": [10, 35, 80],  "coco_id": 2, "yolo_id": 1 },
+    { "name": "yellow_zone", "sam3_prompts": ["yellow zone"], "color": [255, 230, 0], "coco_id": 4, "yolo_id": 2 },
     { "name": "green_floor", "sam3_prompts": ["green playing surface with lines", "green floor"], "color": [230, 0, 120], "coco_id": 3 }
   ],
   "visualization":{
@@ -30,6 +32,10 @@
     "output_fps":4,
     "trajectory_window":60,
     "overlay_excluded_classes":["green_floor"]
+  },
+  "yolo":{
+    "conf":0.4,
+    "imgsz":960
   },
   "tracking":{
     "track_activation_threshold":0.4,
