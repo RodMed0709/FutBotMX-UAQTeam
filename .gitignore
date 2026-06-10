@@ -93,3 +93,7 @@ jupyter_server_config.json
 
 # 12. Herramientas de IA y estado local
 .claude/
+# auto-generados (no versionar)
+notebooks/**/yolo_dataset/
+notebooks/**/runs/
+notebooks/**/__pycache__/
