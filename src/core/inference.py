@@ -95,6 +95,7 @@ def run_inference(
     include_masks: bool = False,
     render_video: bool = True,
     detector: str | None = None,
+    tracker: str | None = None,
 ) -> dict:
     """Ejecuta la inferencia de un video por la puerta única de la fachada.
 
@@ -135,6 +136,9 @@ def run_inference(
             (``"sam3_text"`` | ``"yolo_sam3"`` o un callable). ``None`` ⇒ la config
             (clave ``detector``) o ``"sam3_text"``. En ``mode="segmentation"`` se
             **ignora** (fuera de alcance).
+        tracker: tracker para ``mode="tracking"`` (``"bytetrack"`` | ``"botsort"``).
+            ``None`` ⇒ la config (``tracking.tracker``) o ``"bytetrack"``. Ortogonal a
+            ``detector``. En ``mode="segmentation"`` se **ignora**.
 
     Returns:
         ``{"json": Path, "video": Path | None, "index": dict | None}``. ``"video"`` es
@@ -173,6 +177,7 @@ def run_inference(
             include_masks=include_masks,
             render_video=render_video,
             detector=detector,
+            tracker=tracker,
         )
 
     raise ValueError(f"mode '{mode}' no soportado (usa 'segmentation' o 'tracking').")

@@ -42,6 +42,7 @@ from src.core.overlay import overlay_detections
 from src.core.sam3_loader import Sam3Bundle, load_sam3
 from src.core.detectors import get_detector
 from src.core.segmentation import _load_classes
+from src.core.trackers import KNOWN_TRACKERS, get_tracker
 from src.core.video_writer import open_video_writer
 from src.utils import PROJECT_ROOT, get_abs_path
 
@@ -182,6 +183,7 @@ def track_video(
     include_masks: bool = False,
     render_video: bool = True,
     detector: str | Callable | None = None,
+    tracker: str | None = None,
 ) -> dict:
     """Trackea un video con detección per-frame inyectable + ByteTrack por clase.
 
@@ -217,6 +219,10 @@ def track_video(
             ``(frame, classes, bundle) -> {nombre: [Detection]}``. Si es ``None``, usa
             la clave ``detector`` de la config y, si falta, ``"sam3_text"`` (camino
             actual). Un nombre desconocido lanza ``ValueError`` antes de cargar SAM3.
+        tracker: tracker a usar (``"bytetrack"`` | ``"botsort"``). Si es ``None``, usa
+            ``tracking.tracker`` de la config y, si falta, ``"bytetrack"`` (camino
+            actual). Ortogonal a ``detector``. Un nombre desconocido lanza
+            ``ValueError`` antes de cargar SAM3.
 
     Returns:
         ``{"json": <ruta_json>, "video": <ruta_mp4_o_None>, "index": <dict
@@ -238,8 +244,15 @@ def track_video(
         detector = config.get("detector", "sam3_text")
     detector_fn = detector if callable(detector) else get_detector(detector)
 
+    # Resolver el tracker tambien antes de cargar modelos (validacion barata).
+    if tracker is None:
+        tracker = config.get("tracking", {}).get("tracker", "bytetrack")
+    if tracker not in KNOWN_TRACKERS:
+        raise ValueError(
+            f"tracker '{tracker}' no soportado (usa uno de {list(KNOWN_TRACKERS)})."
+        )
+
     import supervision as sv
-    from trackers import ByteTrackTracker
 
     bundle = bundle or load_sam3()
     max_frames = max_frames if max_frames is not None else cfg_max_frames
@@ -254,9 +267,14 @@ def track_video(
     else:
         json_path, mp4_path = inference_paths(stem, outputs_dir)
 
-    # Un tracker ByteTrack por clase (la clase queda determinada por construcción).
+    # Un tracker por clase (ByteTrack o BoT-SORT), via el factory intercambiable.
     trackers = {
-        cls["name"]: ByteTrackTracker(frame_rate=fps, **bytetrack_kwargs)
+        cls["name"]: get_tracker(
+            tracker,
+            frame_rate=fps,
+            bytetrack_kwargs=bytetrack_kwargs,
+            botsort_config=config.get("botsort", {}),
+        )
         for cls in classes
     }
 
