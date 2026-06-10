@@ -49,14 +49,39 @@ def _xyxy_to_xywh(xyxy: np.ndarray) -> np.ndarray:
     return np.stack([cx, cy, w, h], axis=1)
 
 
+def _iou_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Matriz IoU (M,N) entre cajas xyxy ``a`` (M,4) y ``b`` (N,4)."""
+    if len(a) == 0 or len(b) == 0:
+        return np.zeros((len(a), len(b)), dtype=np.float32)
+    area_a = (a[:, 2] - a[:, 0]) * (a[:, 3] - a[:, 1])
+    area_b = (b[:, 2] - b[:, 0]) * (b[:, 3] - b[:, 1])
+    lt = np.maximum(a[:, None, :2], b[None, :, :2])
+    rb = np.minimum(a[:, None, 2:], b[None, :, 2:])
+    wh = np.clip(rb - lt, 0.0, None)
+    inter = wh[..., 0] * wh[..., 1]
+    union = area_a[:, None] + area_b[None, :] - inter
+    return inter / np.maximum(union, 1e-9)
+
+
 class _Det:
-    """Objeto "results" mínimo que ``BOTSORT.update`` lee (conf/cls/xyxy/xywh)."""
+    """Objeto "results" que ``BOTSORT.update`` consume.
+
+    La API de tracking de ultralytics exige que ``results`` exponga ``.conf``,
+    ``.cls``, ``.xywh`` y ``.xyxy`` (np.ndarray) y que sea **indexable** por máscara
+    booleana (``results[mask]`` -> subconjunto del mismo tipo) y soporte ``len()``.
+    """
 
     def __init__(self, xyxy: np.ndarray, conf: np.ndarray, cls: np.ndarray) -> None:
         self.xyxy = np.asarray(xyxy, dtype=np.float32).reshape(-1, 4)
         self.conf = np.asarray(conf, dtype=np.float32).reshape(-1)
         self.cls = np.asarray(cls, dtype=np.float32).reshape(-1)
         self.xywh = _xyxy_to_xywh(self.xyxy)
+
+    def __len__(self) -> int:
+        return len(self.xyxy)
+
+    def __getitem__(self, index) -> "_Det":
+        return _Det(self.xyxy[index], self.conf[index], self.cls[index])
 
 
 class BotSortTracker:
@@ -96,8 +121,10 @@ class BotSortTracker:
     def update(self, detections, frame: np.ndarray):
         """Asocia ``detections`` (sv.Detections) con BoT-SORT y devuelve los tracks.
 
-        Devuelve ``sv.Detections`` con ``tracker_id`` y ``data["src"]`` mapeado por la
-        columna ``idx`` que emite ultralytics (índice de la detección de entrada).
+        Devuelve ``sv.Detections`` con ``tracker_id`` y ``data["src"]`` preservado. El
+        ``src`` se recupera mapeando cada track de salida a su detección de entrada por
+        **IoU** (la columna ``idx`` de ultralytics es relativa al subconjunto filtrado
+        por umbral, no al índice original, así que no sirve para el mapeo).
         """
         import supervision as sv
 
@@ -117,9 +144,23 @@ class BotSortTracker:
 
         out = np.asarray(out, dtype=np.float32)
         # Filas: [x1, y1, x2, y2, track_id, score, cls, idx].
-        idx = out[:, 7].astype(int)
+        out_xyxy = out[:, :4]
         src_in = detections.data.get("src") if detections.data else None
-        src = np.asarray(src_in)[idx] if src_in is not None else idx
+
+        # Mapear cada track de salida a la deteccion de entrada por mayor IoU. Los
+        # tracks confirmados de este frame coinciden con una caja de entrada; los que
+        # no superan un IoU minimo (coasting/KF puro) se descartan (no hay mascara que
+        # asociar este frame).
+        iou = _iou_matrix(out_xyxy, xyxy)
+        best = iou.argmax(axis=1) if n else np.zeros(len(out), dtype=int)
+        best_iou = iou[np.arange(len(out)), best] if n else np.zeros(len(out))
+        keep = best_iou >= 0.1
+        if not keep.any():
+            return sv.Detections.empty()
+
+        out = out[keep]
+        best = best[keep]
+        src = np.asarray(src_in)[best] if src_in is not None else best
         return sv.Detections(
             xyxy=out[:, :4].astype(float),
             confidence=out[:, 5].astype(float),
