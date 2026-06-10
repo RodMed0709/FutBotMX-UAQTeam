@@ -54,12 +54,18 @@ class BotSortTracker:
     """BoT-SORT (ultralytics) tras la interfaz común de tracker del proyecto."""
 
     def __init__(self, frame_rate: float, config: dict) -> None:
+        import inspect
         from types import SimpleNamespace
 
         from ultralytics.trackers import BOTSORT
 
         args = SimpleNamespace(**{**_BOTSORT_DEFAULTS, **(config or {})})
-        self._tracker = BOTSORT(args, frame_rate=int(round(frame_rate)))
+        # La firma de BOTSORT varia entre versiones de ultralytics: algunas aceptan
+        # frame_rate, otras lo derivan de args. Se pasa solo si existe el parametro.
+        if "frame_rate" in inspect.signature(BOTSORT.__init__).parameters:
+            self._tracker = BOTSORT(args, frame_rate=int(round(frame_rate)))
+        else:
+            self._tracker = BOTSORT(args)
 
     def update(self, detections, frame: np.ndarray):
         """Asocia ``detections`` (sv.Detections) con BoT-SORT y devuelve los tracks.
