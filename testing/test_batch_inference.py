@@ -68,6 +68,8 @@ def part_a_local() -> None:
         "include_masks": False,
         "render_video": False,
         "overwrite": False,
+        "detector": None,
+        "tracker": None,
     }
     for name, default in expected.items():
         assert name in params, f"run_batch no expone {name}"
@@ -93,7 +95,14 @@ def part_a_local() -> None:
 
         metadata._load_metadata_config = lambda: (None, rel_csv, None, [])
         batch._load_outputs_dir = lambda: str(outdir)
-        sam3_loader.load_sam3 = lambda: object()
+
+        sam3_calls: list[int] = []
+
+        def fake_load_sam3():
+            sam3_calls.append(1)
+            return object()
+
+        sam3_loader.load_sam3 = fake_load_sam3
 
         calls: list[str] = []
 
@@ -153,6 +162,40 @@ def part_a_local() -> None:
             keys = {"id", "ruta", "status", "json", "video", "error"}
             assert all(keys <= set(r) for r in res), "entradas con forma incompleta"
             print("  [ok] resumen estructurado por video")
+
+            # 5) Validación temprana: nombre invalido -> ValueError sin cargar SAM3.
+            sam3_calls.clear()
+            _assert_value_error(
+                lambda: run_batch(videos=[2], tracker="inexistente", overwrite=True),
+                "tracker inexistente",
+            )
+            _assert_value_error(
+                lambda: run_batch(videos=[2], detector="inexistente", overwrite=True),
+                "detector inexistente",
+            )
+            assert not sam3_calls, "no debe cargar SAM3 si detector/tracker es invalido"
+            print("  [ok] validación temprana (sin cargar SAM3)")
+
+            # 6) Propagación: detector/tracker válidos llegan a run_inference.
+            seen: dict[str, object] = {}
+
+            def fake_infer_capture(ruta, **kw):
+                seen.update(kw)
+                return fake_run_inference(ruta, **kw)
+
+            batch.run_inference = fake_infer_capture
+            try:
+                run_batch(
+                    videos=[2],
+                    tracker="bytetrack",
+                    detector="sam3_text",
+                    overwrite=True,
+                )
+            finally:
+                batch.run_inference = fake_run_inference
+            assert seen.get("tracker") == "bytetrack", "tracker no propagado"
+            assert seen.get("detector") == "sam3_text", "detector no propagado"
+            print("  [ok] propagación de detector/tracker a run_inference")
         finally:
             metadata._load_metadata_config = orig_meta
             batch._load_outputs_dir = orig_outputs

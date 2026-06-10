@@ -60,6 +60,31 @@ def _load_outputs_dir() -> str:
     return working_dirs["outputs_dir"]
 
 
+def _validate_detector_tracker(detector: str | None, tracker: str | None) -> None:
+    """Valida nombres de detector/tracker SIN cargar modelos.
+
+    Se llama al inicio de ``run_batch``, antes de ``load_sam3()``, para fallar barato
+    ante un nombre invalido. ``None`` se acepta en ambos (se usara el default del
+    config mas adelante, en ``run_inference``/``track_video``).
+
+    Imports perezosos para no arrastrar ``trackers``/``detectors`` al importar el
+    modulo.
+
+    Raises:
+        ValueError: si ``tracker`` no esta en ``KNOWN_TRACKERS``, o si ``detector`` no
+            esta registrado (delegado a ``get_detector``).
+    """
+    from src.core.detectors import get_detector
+    from src.core.trackers import KNOWN_TRACKERS
+
+    if tracker is not None and tracker not in KNOWN_TRACKERS:
+        raise ValueError(
+            f"tracker '{tracker}' no soportado (usa uno de {list(KNOWN_TRACKERS)})."
+        )
+    if detector is not None:
+        get_detector(detector)  # levanta ValueError con su mensaje canonico
+
+
 def _is_int(value: object) -> bool:
     """True si ``value`` puede interpretarse como entero (acepta ints y strings)."""
     try:
@@ -111,6 +136,8 @@ def run_batch(
     include_masks: bool = False,
     render_video: bool = False,
     overwrite: bool = False,
+    detector: str | None = None,
+    tracker: str | None = None,
 ) -> list[dict]:
     """Corre la inferencia sobre un lote de videos reusando ``run_inference``.
 
@@ -136,6 +163,14 @@ def run_batch(
             el dato es el producto); sobreescribible.
         overwrite: si ``True``, reprocesa aunque el JSON ya exista (desactiva
             skip-done).
+        detector: estrategia de deteccion por frame (``"sam3_text"`` | ``"yolo_sam3"``)
+            para **todo** el lote. ``None`` (por defecto) usa el default del config.
+            **Solo aplica en** ``mode="tracking"``; en segmentacion se **ignora**. Un
+            nombre invalido levanta ``ValueError`` antes de cargar SAM3.
+        tracker: tracker (``"bytetrack"`` | ``"botsort"``) para **todo** el lote.
+            ``None`` (por defecto) usa el default del config. **Solo aplica en**
+            ``mode="tracking"``; en segmentacion se **ignora**. Un nombre invalido
+            levanta ``ValueError`` antes de cargar SAM3.
 
     Returns:
         ``list[dict]``, una entrada por video:
@@ -143,11 +178,13 @@ def run_batch(
         "json": str | None, "video": str | None, "error": str | None}``.
 
     Raises:
-        ValueError: ``videos`` con id/ruta inexistente; CONFIG_FILENAME ausente.
+        ValueError: ``videos`` con id/ruta inexistente; CONFIG_FILENAME ausente;
+            ``detector``/``tracker`` con nombre invalido (antes de cargar SAM3).
         KeyboardInterrupt: se propaga (el lote es abortable).
     """
     from src.core.sam3_loader import load_sam3
 
+    _validate_detector_tracker(detector, tracker)  # falla barato, antes de load_sam3
     outputs_dir = _load_outputs_dir()
     rows = _select_videos(split, videos)
     n = len(rows)
@@ -181,6 +218,8 @@ def run_batch(
                 include_masks=include_masks,
                 render_video=render_video,
                 bundle=bundle,
+                detector=detector,
+                tracker=tracker,
             )
             entry = {
                 "id": vid,
