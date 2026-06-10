@@ -41,11 +41,19 @@ class Sam3Bundle:
         model: el modelo SAM3 cargado, en modo evaluacion.
         device: el dispositivo en el que se cargo el modelo ("cuda" o "cpu"). Es
             la misma fuente que debe usarse al abrir sesiones de inferencia.
+        tracker_processor: processor de la **2a cara** de SAM3 (box-prompt,
+            ``Sam3TrackerProcessor``). ``None`` hasta que ``ensure_tracker_loaded``
+            lo carga **bajo demanda** (carga perezosa/opt-in).
+        tracker_model: modelo de la 2a cara (``Sam3TrackerModel``, segmentacion por
+            caja). ``None`` hasta que ``ensure_tracker_loaded`` lo carga. La carga
+            por defecto (``load_sam3()``) **no** lo toca.
     """
 
     processor: Any
     model: Any
     device: str
+    tracker_processor: Any = None
+    tracker_model: Any = None
 
 
 def _load_env(env_path: Path) -> dict[str, str]:
@@ -155,3 +163,52 @@ def load_sam3(*, use_cache: bool = True, device: str | None = None) -> Sam3Bundl
     if use_cache and device is None:
         return _cached_load()
     return _build_bundle(device=device)
+
+
+def ensure_tracker_loaded(bundle: Sam3Bundle) -> Sam3Bundle:
+    """Carga **perezosa** de la 2a cara de SAM3 (box-prompt) sobre un bundle.
+
+    SAM3 expone dos caras del **mismo** checkpoint: la de video/texto (``model`` /
+    ``processor``, ya cargada por ``load_sam3``) y la de **caja** (``Sam3TrackerModel``
+    / ``Sam3TrackerProcessor``), que segmenta a partir de cajas (box-prompt). Esta
+    funcion carga la segunda cara **bajo demanda** y la deja en el bundle, para no
+    encarecer la carga por defecto ni a los llamadores que solo usan text-prompt.
+
+    Es **idempotente**: si la cara tracker ya esta cargada, devuelve el bundle sin
+    recargar. Sobre el bundle cacheado (singleton), la cara tracker queda cargada una
+    sola vez para toda la sesion.
+
+    Se carga con las **mismas convenciones** que la cara principal: ``bfloat16``,
+    ``low_cpu_mem_usage=True``, modo evaluacion y el **mismo** ``bundle.device`` (para
+    que carga e inferencia compartan dispositivo).
+
+    Nota: la carga de ``Sam3TrackerModel`` emite el aviso benigno
+    ``sam3_video -> sam3_tracker``. Es **esperado** (los pesos del tracker si estan en
+    el checkpoint; verificado que produce mascaras precisas) y **no** se silencia, para
+    no ocultar otros avisos.
+
+    Args:
+        bundle: ``Sam3Bundle`` ya cargado (de ``load_sam3``) sobre el que se rellenan
+            ``tracker_processor`` y ``tracker_model``.
+
+    Returns:
+        El **mismo** ``Sam3Bundle``, con la cara tracker garantizada.
+    """
+    if bundle.tracker_model is not None:
+        return bundle
+
+    import torch
+    from transformers import Sam3TrackerModel, Sam3TrackerProcessor
+
+    sam3_dir = _resolve_sam3_dir()
+    bundle.tracker_processor = Sam3TrackerProcessor.from_pretrained(str(sam3_dir))
+    bundle.tracker_model = (
+        Sam3TrackerModel.from_pretrained(
+            str(sam3_dir),
+            dtype=torch.bfloat16,
+            low_cpu_mem_usage=True,
+        )
+        .to(bundle.device)
+        .eval()
+    )
+    return bundle
