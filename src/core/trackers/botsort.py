@@ -15,21 +15,6 @@ from __future__ import annotations
 
 import numpy as np
 
-# Defaults espejo de botsort.yaml de ultralytics (GMC activo, ReID desactivado).
-_BOTSORT_DEFAULTS: dict = {
-    "track_high_thresh": 0.25,
-    "track_low_thresh": 0.1,
-    "new_track_thresh": 0.25,
-    "track_buffer": 30,
-    "match_thresh": 0.8,
-    "fuse_score": True,
-    "gmc_method": "sparseOptFlow",
-    "proximity_thresh": 0.5,
-    "appearance_thresh": 0.25,
-    "with_reid": False,
-}
-
-
 def _xyxy_to_xywh(xyxy: np.ndarray) -> np.ndarray:
     """Convierte cajas xyxy a xywh (centro + ancho/alto)."""
     xyxy = np.asarray(xyxy, dtype=np.float32).reshape(-1, 4)
@@ -55,17 +40,34 @@ class BotSortTracker:
 
     def __init__(self, frame_rate: float, config: dict) -> None:
         import inspect
-        from types import SimpleNamespace
 
         from ultralytics.trackers import BOTSORT
+        from ultralytics.utils import IterableSimpleNamespace, yaml_load
+        from ultralytics.utils.checks import check_yaml
 
-        args = SimpleNamespace(**{**_BOTSORT_DEFAULTS, **(config or {})})
+        # Base: el botsort.yaml que trae la version INSTALADA de ultralytics, para que
+        # 'args' tenga TODOS los campos que esa version espera (model, with_reid, etc.,
+        # que cambian entre versiones). Encima se aplican los overrides de la config
+        # del proyecto (gmc_method, thresholds, with_reid=false, ...).
+        base = yaml_load(check_yaml("botsort.yaml"))
+        base.update(config or {})
+        args = IterableSimpleNamespace(**base)
+        fr = int(round(frame_rate)) or 30
         # La firma de BOTSORT varia entre versiones de ultralytics: algunas aceptan
         # frame_rate, otras lo derivan de args. Se pasa solo si existe el parametro.
         if "frame_rate" in inspect.signature(BOTSORT.__init__).parameters:
-            self._tracker = BOTSORT(args, frame_rate=int(round(frame_rate)))
+            self._tracker = BOTSORT(args, frame_rate=fr)
         else:
             self._tracker = BOTSORT(args)
+
+        # El buffer de tracks (max_time_lost) depende del fps: track_buffer esta en
+        # frames y debe escalar con el fps real para que la ventana de "coasting" sea
+        # constante EN TIEMPO (1 s a 30 o 60 fps). Se recalcula aqui para no depender
+        # de como cada version de ultralytics maneje frame_rate (p. ej. asumir 30).
+        buffer = int(round(fr / 30.0 * args.track_buffer))
+        for attr in ("max_time_lost", "buffer_size"):
+            if hasattr(self._tracker, attr):
+                setattr(self._tracker, attr, buffer)
 
     def update(self, detections, frame: np.ndarray):
         """Asocia ``detections`` (sv.Detections) con BoT-SORT y devuelve los tracks.
