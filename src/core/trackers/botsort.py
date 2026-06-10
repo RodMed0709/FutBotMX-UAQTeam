@@ -15,6 +15,30 @@ from __future__ import annotations
 
 import numpy as np
 
+def _botsort_yaml_path():
+    """Ruta del ``botsort.yaml`` que trae la versión instalada de ultralytics.
+
+    Usa el resolvedor oficial (``check_yaml``) y, si su API cambió, cae a la ruta
+    dentro del paquete. Evita depender de utilidades de ultralytics que se renombran
+    entre versiones (p. ej. ``yaml_load``).
+    """
+    from pathlib import Path
+
+    try:
+        from ultralytics.utils.checks import check_yaml
+
+        return Path(check_yaml("botsort.yaml"))
+    except Exception:  # noqa: BLE001 - fallback a la ruta del paquete
+        import ultralytics
+
+        return (
+            Path(ultralytics.__file__).resolve().parent
+            / "cfg"
+            / "trackers"
+            / "botsort.yaml"
+        )
+
+
 def _xyxy_to_xywh(xyxy: np.ndarray) -> np.ndarray:
     """Convierte cajas xyxy a xywh (centro + ancho/alto)."""
     xyxy = np.asarray(xyxy, dtype=np.float32).reshape(-1, 4)
@@ -40,18 +64,18 @@ class BotSortTracker:
 
     def __init__(self, frame_rate: float, config: dict) -> None:
         import inspect
+        from types import SimpleNamespace
 
+        import yaml
         from ultralytics.trackers import BOTSORT
-        from ultralytics.utils import IterableSimpleNamespace, yaml_load
-        from ultralytics.utils.checks import check_yaml
 
         # Base: el botsort.yaml que trae la version INSTALADA de ultralytics, para que
         # 'args' tenga TODOS los campos que esa version espera (model, with_reid, etc.,
         # que cambian entre versiones). Encima se aplican los overrides de la config
         # del proyecto (gmc_method, thresholds, with_reid=false, ...).
-        base = yaml_load(check_yaml("botsort.yaml"))
+        base = yaml.safe_load(_botsort_yaml_path().read_text(encoding="utf-8"))
         base.update(config or {})
-        args = IterableSimpleNamespace(**base)
+        args = SimpleNamespace(**base)
         fr = int(round(frame_rate)) or 30
         # La firma de BOTSORT varia entre versiones de ultralytics: algunas aceptan
         # frame_rate, otras lo derivan de args. Se pasa solo si existe el parametro.
