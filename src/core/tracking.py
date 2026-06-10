@@ -23,6 +23,7 @@ El índice de tracks **no** guarda máscaras (memoria acotada). ``supervision``,
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,7 +40,8 @@ from src.core.inference_schema import (
 )
 from src.core.overlay import overlay_detections
 from src.core.sam3_loader import Sam3Bundle, load_sam3
-from src.core.segmentation import _load_classes, detect_classes_in_frame
+from src.core.detectors import get_detector
+from src.core.segmentation import _load_classes
 from src.core.video_writer import open_video_writer
 from src.utils import PROJECT_ROOT, get_abs_path
 
@@ -179,11 +181,13 @@ def track_video(
     bundle: Sam3Bundle | None = None,
     include_masks: bool = False,
     render_video: bool = True,
+    detector: str | Callable | None = None,
 ) -> dict:
-    """Trackea un video con detección per-frame (SAM3) + ByteTrack por clase.
+    """Trackea un video con detección per-frame inyectable + ByteTrack por clase.
 
-    Recorre el video en streaming; por frame detecta con ``detect_classes_in_frame``,
-    convierte cada máscara a caja y la asocia con un ByteTrack por clase, asignando
+    Recorre el video en streaming; por frame detecta con el **detector** seleccionado
+    (``detector``), convierte cada máscara a caja y la asocia con un ByteTrack por
+    clase, asignando
     ``obj_id`` **estables y globalmente únicos** (a diferencia del modo per-frame,
     donde el ``obj_id`` es inestable). Escribe un **JSON unificado** (esquema común de
     inferencia) con la vista frame-indexed (``frames``) y el índice de tracks
@@ -208,6 +212,11 @@ def track_video(
         render_video: si ``True`` (por defecto, uso de un solo video) genera el mp4
             con overlay; si ``False`` solo escribe el JSON. Ortogonal a
             ``include_masks``.
+        detector: estrategia de detección por frame. Acepta un **nombre** del registro
+            (``"sam3_text"`` | ``"yolo_sam3"``) o un **callable** con la firma
+            ``(frame, classes, bundle) -> {nombre: [Detection]}``. Si es ``None``, usa
+            la clave ``detector`` de la config y, si falta, ``"sam3_text"`` (camino
+            actual). Un nombre desconocido lanza ``ValueError`` antes de cargar SAM3.
 
     Returns:
         ``{"json": <ruta_json>, "video": <ruta_mp4_o_None>, "index": <dict
@@ -217,15 +226,22 @@ def track_video(
     Raises:
         ValueError / KeyError / FileNotFoundError: ver ``_load_tracking_config``.
     """
-    import supervision as sv
-    from trackers import ByteTrackTracker
-
     # La firma acepta str|Path; el resto del flujo (get_video_fps, iter_frames)
     # exige Path, asi que normalizamos aqui.
     video_path = Path(video_path)
     classes = classes if classes is not None else _load_classes()
-    bundle = bundle or load_sam3()
     bytetrack_kwargs, cfg_max_frames, outputs_dir, config = _load_tracking_config()
+
+    # Resolver el detector ANTES de los imports/carga pesada (un nombre invalido
+    # falla barato, sin importar supervision/trackers ni cargar SAM3).
+    if detector is None:
+        detector = config.get("detector", "sam3_text")
+    detector_fn = detector if callable(detector) else get_detector(detector)
+
+    import supervision as sv
+    from trackers import ByteTrackTracker
+
+    bundle = bundle or load_sam3()
     max_frames = max_frames if max_frames is not None else cfg_max_frames
 
     fps = get_video_fps(video_path)
@@ -261,7 +277,7 @@ def track_video(
             if resolution is None:
                 resolution = (frame.shape[0], frame.shape[1])
             num_frames += 1
-            dets = detect_classes_in_frame(frame, classes=classes, bundle=bundle)
+            dets = detector_fn(frame, classes=classes, bundle=bundle)
             per_frame: dict[str, list] = {}
 
             for cls in classes:

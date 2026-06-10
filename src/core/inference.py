@@ -94,6 +94,7 @@ def run_inference(
     bundle: Sam3Bundle | None = None,
     include_masks: bool = False,
     render_video: bool = True,
+    detector: str | None = None,
 ) -> dict:
     """Ejecuta la inferencia de un video por la puerta única de la fachada.
 
@@ -130,6 +131,10 @@ def run_inference(
         render_video: si ``True`` (por defecto, uso de un solo video) genera el mp4
             anotado; si ``False`` solo escribe el JSON. Ortogonal al modo y a
             ``include_masks``.
+        detector: estrategia de detección por frame para ``mode="tracking"``
+            (``"sam3_text"`` | ``"yolo_sam3"`` o un callable). ``None`` ⇒ la config
+            (clave ``detector``) o ``"sam3_text"``. En ``mode="segmentation"`` se
+            **ignora** (fuera de alcance).
 
     Returns:
         ``{"json": Path, "video": Path | None, "index": dict | None}``. ``"video"`` es
@@ -167,6 +172,7 @@ def run_inference(
             bundle=bundle,
             include_masks=include_masks,
             render_video=render_video,
+            detector=detector,
         )
 
     raise ValueError(f"mode '{mode}' no soportado (usa 'segmentation' o 'tracking').")
