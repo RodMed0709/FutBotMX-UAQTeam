@@ -23,6 +23,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.core.track_overlay import render_obj_id_overlay  # noqa: E402
 from src.core.tracking import track_video  # noqa: E402
 from src.core.trackers import get_tracker  # noqa: E402
 from src.utils import get_abs_path  # noqa: E402
@@ -65,23 +66,39 @@ def main() -> int:
         return 1
     print(f"  {PINNED_VIDEO}")
 
-    # Rutas de salida DISTINTAS por tracker, fuera de outputs/inference/ para no
-    # pisar los artefactos de los smokes previos (que usan el stem del video).
+    # Salidas DISTINTAS por tracker, fuera de outputs/inference/ (que usa el stem del
+    # video) para no pisar artefactos de smokes previos.
     ab_dir = PROJECT_ROOT / "outputs" / "botsort_ab"
     ab_dir.mkdir(parents=True, exist_ok=True)
-    bs_out = ab_dir / "IMG_9871_botsort.mp4"
-    bt_out = ab_dir / "IMG_9871_bytetrack.mp4"
 
-    print("\n== track_video(detector='yolo_sam3', tracker='botsort') — full frames ==")
-    res_bs = track_video(
-        PINNED_VIDEO, output_path=bs_out, detector="yolo_sam3", tracker="botsort",
-        render_video=True,
-    )
-    assert set(res_bs) == {"json", "video", "index"}, res_bs.keys()
-    bs_by_class = _tracks_by_class(res_bs["json"])
-    print(f"  botsort  tracks/clase: {bs_by_class}")
-    print(f"  JSON: {Path(res_bs['json']).relative_to(PROJECT_ROOT)}")
-    print(f"  mp4 : {Path(res_bs['video']).relative_to(PROJECT_ROOT)}")
+    def run(tracker_name: str):
+        # include_masks=True -> el JSON lleva RLE para que el overlay pinte mascaras.
+        # render_video=False -> se omite el overlay "vivo" (solo mascaras por clase, no
+        # muestra IDs); el video util para el A/B es el post-pass por obj_id de abajo.
+        res = track_video(
+            PINNED_VIDEO,
+            output_path=ab_dir / f"IMG_9871_{tracker_name}.mp4",
+            detector="yolo_sam3",
+            tracker=tracker_name,
+            include_masks=True,
+            render_video=False,
+        )
+        assert set(res) == {"json", "video", "index"}, res.keys()
+        by_class = _tracks_by_class(res["json"])
+        # Post-pass: overlay por obj_id (caja + 'nombre #id' + estela + mascara RLE).
+        ov = render_obj_id_overlay(
+            res["json"],
+            PINNED_VIDEO,
+            output_path=ab_dir / f"IMG_9871_{tracker_name}_objid.mp4",
+            draw_masks=True,
+        )
+        print(f"  {tracker_name:9s} tracks/clase: {by_class}")
+        print(f"    JSON   : {Path(res['json']).relative_to(PROJECT_ROOT)}")
+        print(f"    overlay: {Path(ov).relative_to(PROJECT_ROOT)}")
+        return res, by_class
+
+    print("\n== botsort (detector='yolo_sam3') — full frames + overlay obj_id ==")
+    res_bs, bs_by_class = run("botsort")
 
     # green_floor presente (via text-prompt).
     data = json.loads(Path(res_bs["json"]).read_text(encoding="utf-8"))
@@ -92,14 +109,8 @@ def main() -> int:
     )
     print(f"  green_floor presente en frames: {green_seen}")
 
-    print("\n== A/B: tracker='bytetrack' (mismo video, salida propia) ==")
-    res_bt = track_video(
-        PINNED_VIDEO, output_path=bt_out, detector="yolo_sam3", tracker="bytetrack",
-        render_video=True,
-    )
-    bt_by_class = _tracks_by_class(res_bt["json"])
-    print(f"  bytetrack tracks/clase: {bt_by_class}")
-    print(f"  mp4 : {Path(res_bt['video']).relative_to(PROJECT_ROOT)}")
+    print("\n== A/B: bytetrack (mismo video) — full frames + overlay obj_id ==")
+    res_bt, bt_by_class = run("bytetrack")
 
     print("\n== comparativa (menos = menos fragmentacion) ==")
     for name in sorted(set(bs_by_class) | set(bt_by_class)):
