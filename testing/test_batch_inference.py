@@ -227,13 +227,15 @@ def part_b_pod() -> None:
     vids = _pick_reserved_videos(3)
     print(f"  videos reservados: {vids}")
 
-    # 1) Segmentación con cuota: video + JSON extendido.
+    # 1) Segmentación con cuota: video + JSON extendido. overwrite para que la Parte B
+    #    sea re-ejecutable (si no, el skip-done de una corrida previa la deja en skipped).
     res = run_batch(
         mode="segmentation",
         videos=vids,
         sampling="quota",
         include_masks=True,
         render_video=True,
+        overwrite=True,
     )
     assert all(r["status"] == "done" for r in res), "seg: no todos done"
     for r in res:
