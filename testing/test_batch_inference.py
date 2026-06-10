@@ -112,7 +112,7 @@ def part_a_local() -> None:
                 raise RuntimeError("boom")
             jp, _ = inference_paths(Path(ruta).stem, str(outdir))
             jp.parent.mkdir(parents=True, exist_ok=True)
-            jp.write_text("{}", encoding="utf-8")
+            jp.write_text('{"num_frames": 30}', encoding="utf-8")  # para fps
             return {"json": jp, "video": None, "index": None}
 
         batch.run_inference = fake_run_inference
@@ -158,10 +158,33 @@ def part_a_local() -> None:
             assert len(calls) == 2, "el lote debe continuar tras el fallo"
             print("  [ok] aislamiento de errores (un fallo no detiene el lote)")
 
-            # 4) Resumen: forma de cada entrada.
-            keys = {"id", "ruta", "status", "json", "video", "error"}
+            # 4) Resumen: forma de cada entrada (incluye campos de timing).
+            keys = {
+                "id",
+                "ruta",
+                "status",
+                "json",
+                "video",
+                "error",
+                "elapsed_s",
+                "peak_vram_mb",
+                "fps",
+            }
             assert all(keys <= set(r) for r in res), "entradas con forma incompleta"
             print("  [ok] resumen estructurado por video")
+
+            # 4b) Timing: done con valores; failed con None (sin CUDA local).
+            done2, failed2 = by_id[2], by_id[3]
+            assert isinstance(done2["elapsed_s"], float) and done2["elapsed_s"] > 0
+            assert done2["fps"] == 30 / done2["elapsed_s"], "fps = num_frames/elapsed"
+            assert done2["peak_vram_mb"] is None, "sin CUDA -> peak_vram_mb None"
+            assert all(failed2[k] is None for k in ("elapsed_s", "peak_vram_mb", "fps"))
+            # skipped tambien lleva los 3 en None.
+            res_sk = run_batch(videos=[2])  # JSON de C ya existe -> skipped
+            sk = res_sk[0]
+            assert sk["status"] == "skipped"
+            assert all(sk[k] is None for k in ("elapsed_s", "peak_vram_mb", "fps"))
+            print("  [ok] timing: done con valores, skipped/failed con None")
 
             # 5) Validación temprana: nombre invalido -> ValueError sin cargar SAM3.
             sam3_calls.clear()

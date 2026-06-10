@@ -17,11 +17,41 @@ loaders de metadata se importan de forma perezosa dentro de la función.
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 from src.core.inference import run_inference
 from src.core.inference_schema import inference_paths
 from src.utils import PROJECT_ROOT, get_abs_path
+
+# Campos de medición en None: para skip-done y fallos (no hubo inferencia medible).
+_TIMING_NULL = {"elapsed_s": None, "peak_vram_mb": None, "fps": None}
+
+
+def _reset_peak_vram() -> None:
+    """Resetea el contador de pico de VRAM (no-op sin CUDA). torch perezoso."""
+    import torch
+
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
+
+
+def _read_peak_vram_mb() -> float | None:
+    """Pico de VRAM (MB) desde el ultimo reset, o ``None`` sin CUDA. torch perezoso."""
+    import torch
+
+    if not torch.cuda.is_available():
+        return None
+    return torch.cuda.max_memory_allocated() / 1e6
+
+
+def _read_num_frames(json_path: Path | str) -> int | None:
+    """``num_frames`` del header del JSON de salida; ``None`` si falta o falla la lectura."""
+    try:
+        doc = json.loads(Path(json_path).read_text(encoding="utf-8"))
+        return int(doc["num_frames"])
+    except (OSError, KeyError, ValueError, TypeError):
+        return None
 
 
 def _load_env(env_path: Path) -> dict[str, str]:
@@ -175,7 +205,14 @@ def run_batch(
     Returns:
         ``list[dict]``, una entrada por video:
         ``{"id": int, "ruta": str, "status": "done"|"skipped"|"failed",
-        "json": str | None, "video": str | None, "error": str | None}``.
+        "json": str | None, "video": str | None, "error": str | None,
+        "elapsed_s": float | None, "peak_vram_mb": float | None, "fps": float | None}``.
+
+        Campos de medición (solo con valor en ``done``; ``None`` en ``skipped``/
+        ``failed``): ``elapsed_s`` es el wall-time (s) de la llamada ``run_inference``;
+        ``peak_vram_mb`` es la VRAM pico (MB) durante esa llamada (``None`` sin CUDA);
+        ``fps`` = ``num_frames / elapsed_s`` (``None`` si no se pudo leer ``num_frames``
+        del JSON de salida).
 
     Raises:
         ValueError: ``videos`` con id/ruta inexistente; CONFIG_FILENAME ausente;
@@ -205,11 +242,14 @@ def run_batch(
                     "json": str(json_path),
                     "video": None,
                     "error": None,
+                    **_TIMING_NULL,
                 }
             )
             continue
 
         try:
+            _reset_peak_vram()  # aisla el pico de VRAM de este video
+            t0 = time.perf_counter()
             res = run_inference(
                 ruta,
                 mode=mode,
@@ -221,6 +261,14 @@ def run_batch(
                 detector=detector,
                 tracker=tracker,
             )
+            elapsed = time.perf_counter() - t0
+            peak_vram = _read_peak_vram_mb()
+            num_frames = _read_num_frames(res["json"])
+            fps = (
+                num_frames / elapsed
+                if (num_frames is not None and elapsed > 0)
+                else None
+            )
             entry = {
                 "id": vid,
                 "ruta": ruta,
@@ -228,6 +276,9 @@ def run_batch(
                 "json": str(res["json"]),
                 "video": str(res["video"]) if res["video"] else None,
                 "error": None,
+                "elapsed_s": elapsed,
+                "peak_vram_mb": peak_vram,
+                "fps": fps,
             }
         except KeyboardInterrupt:
             raise  # abortable: no se traga
@@ -239,6 +290,7 @@ def run_batch(
                 "json": None,
                 "video": None,
                 "error": repr(exc),
+                **_TIMING_NULL,
             }
         print(f"[{i}/{n}] {ruta} -> {entry['status']}")
         results.append(entry)
