@@ -65,9 +65,17 @@ def main() -> int:
         return 1
     print(f"  {PINNED_VIDEO}")
 
+    # Rutas de salida DISTINTAS por tracker, fuera de outputs/inference/ para no
+    # pisar los artefactos de los smokes previos (que usan el stem del video).
+    ab_dir = PROJECT_ROOT / "outputs" / "botsort_ab"
+    ab_dir.mkdir(parents=True, exist_ok=True)
+    bs_out = ab_dir / "IMG_9871_botsort.mp4"
+    bt_out = ab_dir / "IMG_9871_bytetrack.mp4"
+
     print("\n== track_video(detector='yolo_sam3', tracker='botsort') — full frames ==")
     res_bs = track_video(
-        PINNED_VIDEO, detector="yolo_sam3", tracker="botsort", render_video=True
+        PINNED_VIDEO, output_path=bs_out, detector="yolo_sam3", tracker="botsort",
+        render_video=True,
     )
     assert set(res_bs) == {"json", "video", "index"}, res_bs.keys()
     bs_by_class = _tracks_by_class(res_bs["json"])
@@ -84,12 +92,14 @@ def main() -> int:
     )
     print(f"  green_floor presente en frames: {green_seen}")
 
-    print("\n== A/B: tracker='bytetrack' (mismo video) ==")
+    print("\n== A/B: tracker='bytetrack' (mismo video, salida propia) ==")
     res_bt = track_video(
-        PINNED_VIDEO, detector="yolo_sam3", tracker="bytetrack", render_video=False
+        PINNED_VIDEO, output_path=bt_out, detector="yolo_sam3", tracker="bytetrack",
+        render_video=True,
     )
     bt_by_class = _tracks_by_class(res_bt["json"])
     print(f"  bytetrack tracks/clase: {bt_by_class}")
+    print(f"  mp4 : {Path(res_bt['video']).relative_to(PROJECT_ROOT)}")
 
     print("\n== comparativa (menos = menos fragmentacion) ==")
     for name in sorted(set(bs_by_class) | set(bt_by_class)):
