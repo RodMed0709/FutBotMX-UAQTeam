@@ -83,7 +83,7 @@
 
 ## Fase C — Validación
 
-- [ ] **T7 — Script smoke `testing/test_box_prompt.py` (corre en el pod)**
+- [x] **T7 — Script smoke `testing/test_box_prompt.py` (corre en el pod)**
   - Implementar la estrategia del §4: `extract_frames(<video real no-forced_testing>)`
     → 1 frame; `load_sam3()`; producir cajas reales con
     `detect_classes_in_frame` + `mask_to_bbox_centroid` (clase con detecciones,
