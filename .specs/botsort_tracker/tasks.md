@@ -85,7 +85,7 @@
 
 ## Fase D — Validación
 
-- [ ] **T7 — Script smoke A/B `testing/test_botsort_tracker.py` (pod, full frames)**
+- [x] **T7 — Script smoke A/B `testing/test_botsort_tracker.py` (pod, full frames)**
   - Pinear `data/raw/17Abril/Cámaras/IMG_9871.MOV` (mismo del smoke anterior). Validar
     `get_tracker("inexistente")` ⇒ `ValueError`. Correr
     `track_video(detector="yolo_sam3", tracker="botsort", render_video=True)`;
