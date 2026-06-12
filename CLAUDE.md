@@ -14,10 +14,15 @@ two pipelines that share the same dataset, config conventions and methodology:
 
 ### Current state
 
-The **SAM3-only pipeline is built**. The constitution's YOLO→SAM3→ByteTrack "base
-pipeline" and the fine-tuning pipeline are **not** (YOLO is unexplored — there is a
-stray `notebooks/fase_0/yolov8n.pt` but no YOLO code). A single inference facade
-fronts two implementations, all config-driven and reusing the same building blocks:
+**Both detection backends are built and compose as `detector → tracker`.** The
+SAM3-only path (`sam3_text`, SAM3 by text prompt) **and** the YOLO→SAM3 path
+(`yolo_sam3`: a fine-tuned YOLO emits boxes → SAM3 box-prompt) are wired as
+**pluggable detectors** (`src/core/detectors/`, resolved via `get_detector`) usable in
+**both** segmentation and tracking. Trackers are likewise pluggable (`bytetrack` |
+`botsort`, `src/core/trackers/`). So the constitution's YOLO→SAM3→ByteTrack "base
+pipeline" now exists; what stays open is the YOLO **fine-tuning *strategy*** (how to
+keep improving the detector). A single inference facade fronts two implementations,
+all config-driven and reusing the same building blocks:
 
 - **Facade** (`src/core/inference.py::run_inference`): the **single entry point per
   video**, with `mode="segmentation" | "tracking"`. Thin router — validates
@@ -50,10 +55,19 @@ frame_visualization, sam3_loader, classes_config, text_segmentation,
 segmentation_overlay, video_writer, pipeline_runner, source_fps,
 csv_dataset_metadata, forced_testing_split, eval_frame_export, gt_annotation
 (human/process task — no code), video_tracking, inference_schema, optional_render,
-unified_inference, batch_inference.
+unified_inference, batch_inference, obj_id_overlay; **YOLO integration:**
+sam3_box_prompt, yolo_detector, detector_strategy, botsort_tracker,
+batch_detector_tracker; **benchmark:** batch_timing, benchmark_metrics; and (this
+strand) detector_in_segmentation (pluggable detector in segmentation),
+config_aware_output_paths (`run_label` namespacing), progress_reporting (`tqdm` bars +
+`get_frame_count`).
 
-`notebooks/fase_0/` holds numbered exploration notebooks (SAM3 spikes) — exploratory
-reference, **not** pipeline code; the production code lives under `src/`.
+Notebooks: `notebooks/cookbook_pipeline.ipynb` is the **API recipe book** (how to call
+every packaged function from your own notebook — start here before writing a new one);
+`notebooks/benchmark_models/01_benchmark_detectors.ipynb` /
+`02_benchmark_trackers.ipynb` / `03_benchmark_analysis.ipynb` are the two-phase no-GT
+benchmark drivers + analysis; `notebooks/fase_0/` holds exploration spikes (SAM3) —
+exploratory reference, **not** pipeline code. Production code lives under `src/`.
 
 ### Code architecture (the big picture)
 
@@ -125,14 +139,18 @@ Cross-cutting facts worth knowing before editing:
   frames + versioned `assets/testing_frames.csv`) and `gt_annotation` SDD docs.
   **Paused** waiting on the team's manual annotations in Roboflow; resume with
   `gt_loader` once the COCO ground-truth lands. Tracking evaluation stays deferred.
-- **`video_tracking` — implemented, follow-ups open.** `track_video` is done and
-  ran on the pod. The output mp4 *looks like plain segmentation* because the overlay
-  colors **by class, not by `obj_id`** (the track quality is visible in the JSON, not
-  the video). Open follow-ups (see `.specs/drafts/mvp_sam3_only_roadmap.md` task 5):
-  (a) tune the config `tracking` section to reduce fragmentation
-  (`lost_track_buffer` ↑, `minimum_consecutive_frames` ↑); (b) add a per-`obj_id`
-  overlay so tracking is visible; (c) make the tracked classes configurable to
-  exclude the static `green_floor`.
+- **`video_tracking` — implemented; visibility follow-ups done.** `track_video` runs
+  on the pod. The *live* overlay colors **by class, not by `obj_id`**, but the
+  `obj_id_overlay` task added `track_overlay.py::render_obj_id_overlay` (decoupled
+  post-pass: box + `name #id` + per-`obj_id` trajectory, excludes `green_floor` via
+  `visualization.overlay_excluded_classes`). Still open if needed: tuning the config
+  `tracking` section to reduce fragmentation (`lost_track_buffer` ↑,
+  `minimum_consecutive_frames` ↑).
+- **No-GT benchmark — ACTIVE.** Two-phase design (Fase 1 detectors by efficiency, Fase
+  2 trackers 2×2 by consistency) over 5 seeded testing videos; drivers in
+  `notebooks/benchmark_models/0{1,2,3}_*.ipynb`, metrics module `src/eval/benchmark.py`.
+  Results (figures committed under `assets/benchmark/`, summarized in `README.md`)
+  exist; accuracy vs. ground-truth waits on the paused GT evaluation above.
 
 **Pending / TODO (not yet done):**
 - **Clean up `testing/` scripts to drop the `sys.path` patch.** `src` is now an
@@ -190,10 +208,13 @@ This is the literal protocol from constitution §8. Work and documents are in **
 ## Configuration conventions (from the constitution)
 
 - Global configs live in JSON files named `{NN}_{EXP}.json` (`NN` = version/trial,
-  `EXP` = descriptive). They centralize all **relative** data paths. The active
-  example is `configs/00_testing_config.json` (holds `working_dirs.dataset_dir` =
-  `data/raw`, `working_dirs.sam3_dir` = `assets/sam3`, and `preprocess.frame_quota`
-  = `30`, the frame count read by `extract_frames` in quota mode).
+  `EXP` = descriptive). They centralize all **relative** data paths. The currently
+  active config (`.env` `CONFIG_FILENAME`) is `configs/01_yolo_sam3_config.json` (adds
+  the `yolo` and `botsort` sections on top of `00_testing_config.json`; it has **no**
+  top-level `detector` key, so the default detector falls back to `sam3_text`); both
+  hold `working_dirs.dataset_dir` = `data/raw`,
+  `working_dirs.sam3_dir` = `assets/sam3`, and `preprocess.frame_quota` = `30`, the
+  frame count read by `extract_frames` in quota mode.
 - `.env` key `CONFIG_FILENAME` selects which config file under `configs/` to load.
   Note the current `.env` writes it as `CONFIG_FILENAME =...` (space) — parse with `strip()`.
 - Code must access paths only through the config file — never hardcode absolute paths.
