@@ -96,6 +96,7 @@ def run_inference(
     render_video: bool = True,
     detector: str | None = None,
     tracker: str | None = None,
+    run_label: str | None = None,
 ) -> dict:
     """Ejecuta la inferencia de un video por la puerta única de la fachada.
 
@@ -141,6 +142,10 @@ def run_inference(
         tracker: tracker para ``mode="tracking"`` (``"bytetrack"`` | ``"botsort"``).
             ``None`` ⇒ la config (``tracking.tracker``) o ``"bytetrack"``. Ortogonal a
             ``detector``. En ``mode="segmentation"`` se **ignora**.
+        run_label: subcarpeta opcional por config para las salidas derivadas por
+            defecto (``inference/<run_label>/<stem>/…``); evita que varias configs se
+            pisen al correr sobre los mismos videos. ``None`` ⇒ ruta plana actual. Se
+            **ignora** si se pasa ``output_path``.
 
     Returns:
         ``{"json": Path, "video": Path | None, "index": dict | None}``. ``"video"`` es
@@ -166,6 +171,7 @@ def run_inference(
             include_masks=include_masks,
             render_video=render_video,
             detector=detector,
+            run_label=run_label,
         )
         return {"json": res["json"], "video": res["video"], "index": None}
 
@@ -181,6 +187,7 @@ def run_inference(
             render_video=render_video,
             detector=detector,
             tracker=tracker,
+            run_label=run_label,
         )
 
     raise ValueError(f"mode '{mode}' no soportado (usa 'segmentation' o 'tracking').")

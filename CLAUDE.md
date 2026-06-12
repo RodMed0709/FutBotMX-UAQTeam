@@ -77,6 +77,10 @@ conventions) and the modules compose into the two pipelines above:
     videos from `db_metadata.csv` (by `split` or explicit list), loads SAM3 **once**,
     skips already-done videos (output JSON exists), isolates per-video errors, render
     OFF by default, and returns a per-video summary (`done`/`skipped`/`failed`).
+    Takes an optional `run_label` that namespaces outputs **per config**
+    (`inference/<run_label>/<stem>/…`) so multiple configs don't collide and skip-done
+    becomes per-config (benchmark resume); threaded through `run_inference` →
+    `run_pipeline`/`track_video` down to `inference_paths(namespace=…)`.
   - `track_overlay.py::render_obj_id_overlay` — **decoupled post-pass** that makes
     tracking visible: reads a tracking JSON + the source video and writes a **new** mp4
     (`<stem>_obj_id.mp4`) with **box + `name #id` label + per-`obj_id` trajectory**
@@ -101,7 +105,10 @@ Cross-cutting facts worth knowing before editing:
   **stable** in tracking mode.
 - **Output placement**: heavy outputs (mp4 / extracted frames / GT) go under
   `outputs/` or `data/` (git-ignored); lightweight manifests (`db_metadata.csv`,
-  `testing_frames.csv`) live in `assets/` (versioned).
+  `testing_frames.csv`) live in `assets/` (versioned). Per-video inference outputs
+  live at `outputs/inference/[<run_label>/]<stem>/<stem>.{json,mp4}` via
+  `inference_schema.py::inference_paths`; the optional `run_label` (config namespace,
+  default `None` = flat path) keeps benchmark configs from overwriting each other.
 - **Lazy imports**: `torch`, `cv2`, `imageio`, `supervision`/`trackers`, matplotlib
   are imported *inside* functions so `import src.core` stays cheap — keep this style.
 

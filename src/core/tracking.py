@@ -184,6 +184,7 @@ def track_video(
     render_video: bool = True,
     detector: str | Callable | None = None,
     tracker: str | None = None,
+    run_label: str | None = None,
 ) -> dict:
     """Trackea un video con detección per-frame inyectable + ByteTrack por clase.
 
@@ -223,6 +224,10 @@ def track_video(
             ``tracking.tracker`` de la config y, si falta, ``"bytetrack"`` (camino
             actual). Ortogonal a ``detector``. Un nombre desconocido lanza
             ``ValueError`` antes de cargar SAM3.
+        run_label: subcarpeta opcional por config para las salidas derivadas por
+            defecto (``inference/<run_label>/<stem>/…``); evita que distintas configs
+            se pisen. ``None`` (por defecto) ⇒ ruta plana actual. Se **ignora** si se
+            pasa ``output_path`` (que tiene prioridad).
 
     Returns:
         ``{"json": <ruta_json>, "video": <ruta_mp4_o_None>, "index": <dict
@@ -265,7 +270,7 @@ def track_video(
         mp4_path = Path(output_path)
         json_path = mp4_path.with_name(f"{mp4_path.stem}.json")
     else:
-        json_path, mp4_path = inference_paths(stem, outputs_dir)
+        json_path, mp4_path = inference_paths(stem, outputs_dir, namespace=run_label)
 
     # Un tracker por clase (ByteTrack o BoT-SORT), via el factory intercambiable.
     trackers = {

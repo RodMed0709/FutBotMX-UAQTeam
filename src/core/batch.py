@@ -168,6 +168,7 @@ def run_batch(
     overwrite: bool = False,
     detector: str | None = None,
     tracker: str | None = None,
+    run_label: str | None = None,
 ) -> list[dict]:
     """Corre la inferencia sobre un lote de videos reusando ``run_inference``.
 
@@ -201,6 +202,10 @@ def run_batch(
             ``None`` (por defecto) usa el default del config. **Solo aplica en**
             ``mode="tracking"``; en segmentacion se **ignora**. Un nombre invalido
             levanta ``ValueError`` antes de cargar SAM3.
+        run_label: subcarpeta opcional por config para las salidas
+            (``inference/<run_label>/<stem>/…``). Aisla las salidas de cada config
+            para que no se pisen, y hace el **skip-done por config** (un video hecho
+            bajo una config no se salta bajo otra). ``None`` ⇒ ruta plana actual.
 
     Returns:
         ``list[dict]``, una entrada por video:
@@ -231,7 +236,9 @@ def run_batch(
     results: list[dict] = []
 
     for i, (vid, ruta) in enumerate(rows, start=1):
-        json_path, _ = inference_paths(Path(ruta).stem, outputs_dir)
+        json_path, _ = inference_paths(
+            Path(ruta).stem, outputs_dir, namespace=run_label
+        )
         if json_path.exists() and not overwrite:
             print(f"[{i}/{n}] {ruta} -> skipped")
             results.append(
@@ -260,6 +267,7 @@ def run_batch(
                 bundle=bundle,
                 detector=detector,
                 tracker=tracker,
+                run_label=run_label,
             )
             elapsed = time.perf_counter() - t0
             peak_vram = _read_peak_vram_mb()

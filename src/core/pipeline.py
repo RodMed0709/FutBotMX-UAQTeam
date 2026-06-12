@@ -97,6 +97,7 @@ def run_pipeline(
     include_masks: bool = False,
     render_video: bool = True,
     detector: str | None = None,
+    run_label: str | None = None,
 ) -> dict[str, Path | None]:
     """Ejecuta el pipeline por-frame y genera el JSON del esquema (+ mp4 opcional).
 
@@ -133,6 +134,10 @@ def run_pipeline(
             ``get_detector``; el ``obj_id`` sigue siendo inestable en este modo (la
             asociacion temporal es propia de tracking). Un nombre invalido levanta
             ``ValueError`` **antes** de cargar SAM3.
+        run_label: subcarpeta opcional por config para las salidas derivadas por
+            defecto (``inference/<run_label>/<stem>/…``); evita que distintas configs
+            se pisen. ``None`` (por defecto) ⇒ ruta plana actual. Se **ignora** si se
+            pasa ``output_path`` (que tiene prioridad).
 
     Returns:
         ``{"json": <ruta_json>, "video": <ruta_mp4_o_None>}``. La clave ``"video"``
@@ -171,7 +176,7 @@ def run_pipeline(
         mp4_path = Path(output_path)
         json_path = mp4_path.with_name(f"{mp4_path.stem}.json")
     else:
-        json_path, mp4_path = inference_paths(stem, outputs_dir)
+        json_path, mp4_path = inference_paths(stem, outputs_dir, namespace=run_label)
 
     # Modelo una sola vez (o reusa el bundle precargado que se pase).
     bundle = bundle or load_sam3()

@@ -53,6 +53,29 @@ def _assert_value_error(call, label: str) -> None:
     raise AssertionError(f"{label}: se esperaba ValueError y no se levanto")
 
 
+def check_inference_paths_namespace() -> None:
+    """T7 — derivación de rutas con/sin namespace (lógica pura, sin GPU)."""
+    print("== T7 — inference_paths con namespace ==")
+    base = PROJECT_ROOT / "outputs" / "inference"
+
+    jp, mp = inference_paths("vid", "outputs")
+    assert jp == base / "vid" / "vid.json", jp
+    assert mp == base / "vid" / "vid.mp4", mp
+
+    jp_a, mp_a = inference_paths("vid", "outputs", namespace="cfgA")
+    assert jp_a == base / "cfgA" / "vid" / "vid.json", jp_a
+    assert mp_a == base / "cfgA" / "vid" / "vid.mp4", mp_a
+
+    # Dos namespaces distintos sobre el mismo stem -> rutas distintas (no colisión).
+    jp_b, _ = inference_paths("vid", "outputs", namespace="cfgB")
+    assert jp_a != jp_b, "namespaces distintos deben dar rutas distintas"
+
+    # namespace vacío == sin namespace (retrocompatible).
+    jp_empty, _ = inference_paths("vid", "outputs", namespace="")
+    assert jp_empty == jp, "namespace vacío debe equivaler a sin namespace"
+    print("  [ok] rutas con/sin namespace y no-colisión\n")
+
+
 def part_a_local() -> None:
     """Parte A — firma + orquestación con run_inference/load_sam3 monkeypatcheados."""
     print("== Parte A — local (sin GPU) ==")
@@ -70,12 +93,13 @@ def part_a_local() -> None:
         "overwrite": False,
         "detector": None,
         "tracker": None,
+        "run_label": None,
     }
     for name, default in expected.items():
         assert name in params, f"run_batch no expone {name}"
-        assert (
-            params[name].default == default
-        ), f"run_batch.{name} default {params[name].default!r} != {default!r}"
+        assert params[name].default == default, (
+            f"run_batch.{name} default {params[name].default!r} != {default!r}"
+        )
     print("  [ok] firma de run_batch con defaults esperados")
 
     # CSV temporal DENTRO de PROJECT_ROOT (get_abs_path exige rutas relativas).
@@ -229,6 +253,33 @@ def part_a_local() -> None:
             assert seen.get("tracker") == "bytetrack", "tracker no propagado"
             assert seen.get("detector") == "sam3_text", "detector no propagado"
             print("  [ok] propagación de detector/tracker a run_inference")
+
+            # 7) skip-done POR CONFIG: el run_label aísla el skip-done. C (id 2) tiene
+            #    JSON en la ruta PLANA (de pasos previos) pero NO bajo el namespace.
+            NS = "cfgX"
+            calls.clear()
+            res = run_batch(videos=[2], run_label=NS)
+            assert res[0]["status"] == "done", "namespace nuevo no debe saltarse"
+            assert "data/raw/C.MOV" in calls
+            # Pre-crear el JSON namespaced de C -> ahora SÍ skipped bajo ese namespace.
+            jp_ns, _ = inference_paths("C", str(outdir), namespace=NS)
+            jp_ns.parent.mkdir(parents=True, exist_ok=True)
+            jp_ns.write_text("{}", encoding="utf-8")
+            calls.clear()
+            res = run_batch(videos=[2], run_label=NS)
+            assert res[0]["status"] == "skipped", "JSON namespaced debe saltarse"
+            assert "data/raw/C.MOV" not in calls
+            # Sin run_label la comprobacion usa la ruta plana (independiente).
+            assert run_batch(videos=[2])[0]["status"] == "skipped"  # JSON plano existe
+            # run_label se propaga a run_inference.
+            seen.clear()
+            batch.run_inference = fake_infer_capture
+            try:
+                run_batch(videos=[2], run_label="cfgY")
+            finally:
+                batch.run_inference = fake_run_inference
+            assert seen.get("run_label") == "cfgY", "run_label no propagado"
+            print("  [ok] skip-done por config (el namespace aísla el skipped)")
         finally:
             metadata._load_metadata_config = orig_meta
             batch._load_outputs_dir = orig_outputs
@@ -299,6 +350,7 @@ def part_b_pod() -> None:
 
 def main() -> int:
     print(f"PROJECT_ROOT: {PROJECT_ROOT}\n")
+    check_inference_paths_namespace()
     part_a_local()
 
     if len(sys.argv) > 1 and sys.argv[1] == "pod":

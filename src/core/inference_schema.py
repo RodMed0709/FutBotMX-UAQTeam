@@ -216,18 +216,27 @@ def build_header(
     }
 
 
-def inference_paths(video_stem: str, outputs_dir: str) -> tuple[Path, Path]:
-    """Rutas de salida por video: ``outputs_dir/inference/<stem>/<stem>.{json,mp4}``.
+def inference_paths(
+    video_stem: str, outputs_dir: str, namespace: str | None = None
+) -> tuple[Path, Path]:
+    """Rutas de salida por video: ``outputs_dir/inference/[<namespace>/]<stem>/<stem>.{json,mp4}``.
 
     Args:
         video_stem: nombre base del video (``Path.stem``).
         outputs_dir: directorio de salidas (relativo a ``PROJECT_ROOT``).
+        namespace: subcarpeta opcional por config (p. ej. el label de una corrida de
+            benchmark, ``"sam3_text+bytetrack"``). Si tiene valor, se inserta **antes**
+            del ``<stem>`` para que distintas configs no se pisen. ``None`` o cadena
+            vacia ⇒ ruta plana actual (retrocompatible).
 
     Returns:
         Tupla ``(json_path, mp4_path)``. **No** crea las carpetas (lo hace el
         escritor correspondiente).
     """
-    base = PROJECT_ROOT / outputs_dir / "inference" / video_stem
+    base = PROJECT_ROOT / outputs_dir / "inference"
+    if namespace:
+        base = base / namespace
+    base = base / video_stem
     return base / f"{video_stem}.json", base / f"{video_stem}.mp4"
 
 
