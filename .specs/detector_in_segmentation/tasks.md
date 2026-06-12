@@ -86,14 +86,14 @@
   - **Verificación:** corre y pasa en entorno sin GPU.
   - *Origen:* plan §5.1 / criterio #4.
 
-- [ ] **T9 — Smoke pod/GPU: `yolo_sam3` en segmentación**
+- [x] **T9 — Smoke pod/GPU: `yolo_sam3` en segmentación**
   - Sobre un clip corto: `mode`/`per_frame` con `detector="yolo_sam3"` corre sin error
     y produce un JSON con las **mismas claves** de header y `frames` que `sam3_text`.
   - **Verificación:** comparar estructura (claves) del JSON `yolo_sam3` vs `sam3_text`
     sobre el mismo clip. (Pod/GPU.)
   - *Origen:* plan §5.2 / criterios #5, #6.
 
-- [ ] **T10 — Smoke pod/GPU: retrocompatibilidad**
+- [x] **T10 — Smoke pod/GPU: retrocompatibilidad**
   - `detector=None` (o `"sam3_text"`) sobre el mismo clip produce salida **equivalente**
     a la de hoy.
   - **Verificación:** estructura de JSON idéntica a la corrida sin `detector`.
