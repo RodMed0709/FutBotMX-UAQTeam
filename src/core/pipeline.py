@@ -23,6 +23,7 @@ from pathlib import Path
 
 import numpy as np
 
+from src.core.detectors import get_detector
 from src.core.frame_extraction import (
     extract_frames,
     get_frame_indices,
@@ -36,7 +37,6 @@ from src.core.inference_schema import (
 )
 from src.core.overlay import overlay_detections
 from src.core.sam3_loader import Sam3Bundle, load_sam3
-from src.core.segmentation import detect_classes_in_frame
 from src.core.video_writer import write_video
 from src.utils import PROJECT_ROOT, get_abs_path
 
@@ -96,6 +96,7 @@ def run_pipeline(
     bundle: Sam3Bundle | None = None,
     include_masks: bool = False,
     render_video: bool = True,
+    detector: str | None = None,
 ) -> dict[str, Path | None]:
     """Ejecuta el pipeline por-frame y genera el JSON del esquema (+ mp4 opcional).
 
@@ -126,6 +127,12 @@ def run_pipeline(
         render_video: si ``True`` (por defecto, uso de un solo video) genera el mp4
             anotado; si ``False`` solo escribe el JSON. Ortogonal a ``mode`` y a
             ``include_masks``.
+        detector: estrategia de deteccion por frame (``"sam3_text"`` | ``"yolo_sam3"``).
+            ``None`` (por defecto) usa la clave ``detector`` de la config y, si falta,
+            ``"sam3_text"`` (retrocompatible). Selecciona la estrategia via
+            ``get_detector``; el ``obj_id`` sigue siendo inestable en este modo (la
+            asociacion temporal es propia de tracking). Un nombre invalido levanta
+            ``ValueError`` **antes** de cargar SAM3.
 
     Returns:
         ``{"json": <ruta_json>, "video": <ruta_mp4_o_None>}``. La clave ``"video"``
@@ -146,6 +153,13 @@ def run_pipeline(
     video_path = Path(video_path)
     cfg_classes, outputs_dir, config_fps, config = _load_pipeline_config()
     classes = classes if classes is not None else cfg_classes
+
+    # Resolver el detector ANTES de load_sam3 (un nombre invalido falla barato, sin
+    # cargar el modelo). None => default del config (clave 'detector'), fallback
+    # 'sam3_text' (retrocompatible con el comportamiento previo).
+    if detector is None:
+        detector = config.get("detector", "sam3_text")
+    detector_fn = get_detector(detector)
 
     # fps de salida: en modo completo, el fps real de la fuente; en cuota
     # (frames muestreados), el fps de configuracion (slideshow).
@@ -171,7 +185,7 @@ def run_pipeline(
     records: list[dict] = []
     for i, frame in enumerate(frames):
         print(f"  frame {i + 1}/{total}")
-        dets = detect_classes_in_frame(frame, classes=classes, bundle=bundle)
+        dets = detector_fn(frame, classes=classes, bundle=bundle)
         if render_video:
             composed.append(overlay_detections(frame, dets, classes=classes))
         records.append(

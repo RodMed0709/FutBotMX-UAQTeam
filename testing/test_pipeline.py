@@ -80,8 +80,63 @@ def find_video() -> Path | None:
     return movs[0].relative_to(PROJECT_ROOT)
 
 
+def check_invalid_detector() -> bool:
+    """T8 (sin GPU): un detector inexistente levanta ValueError ANTES de cargar SAM3.
+
+    La resolucion del detector en run_pipeline ocurre tras leer la config y antes de
+    load_sam3 / extract_frames, asi que basta un nombre basura para forzar el fallo
+    barato. No requiere GPU, pesos ni un video real.
+    """
+    bogus = "__definitivamente_no_es_un_detector__"
+    try:
+        run_pipeline("data/raw/__dummy__.MOV", detector=bogus)
+    except ValueError as exc:
+        print(f"  ValueError esperado (fail-cheap): {exc}  OK")
+        return True
+    except Exception as exc:  # cualquier otra excepcion = no es fail-cheap por nombre
+        print(f"  [FALLO] se esperaba ValueError por detector invalido, vino: {exc!r}")
+        return False
+    print("  [FALLO] no se levanto ValueError con un detector invalido.")
+    return False
+
+
+def check_detector_modes(video: Path) -> bool:
+    """T9/T10 (pod/GPU): yolo_sam3 corre en segmentacion y casa con sam3_text.
+
+    Corre la misma cuota de frames con ambos detectores y compara la **estructura**
+    del JSON (claves de cabecera y de cada frame), no los valores. Confirma que:
+      - yolo_sam3 funciona como segmentador suelto (mismo esquema), y
+      - sam3_text (== default) sigue produciendo el esquema de siempre.
+    """
+    payloads = {}
+    for det in ("yolo_sam3", "sam3_text"):
+        print(f"  run_pipeline(detector={det!r}) ...")
+        res = run_pipeline(video, detector=det, render_video=False)
+        payloads[det] = json.loads(Path(res["json"]).read_text(encoding="utf-8"))
+
+    yolo, sam3 = payloads["yolo_sam3"], payloads["sam3_text"]
+    if set(yolo) != set(sam3):
+        print(f"  [FALLO] claves de cabecera distintas: {set(yolo) ^ set(sam3)}")
+        return False
+    if yolo["frames"] and sam3["frames"]:
+        ky = set(yolo["frames"][0]) if yolo["frames"][0] else set()
+        ks = set(sam3["frames"][0]) if sam3["frames"][0] else set()
+        # Ambos frames pueden no tener detecciones; comparamos solo si hay contenido.
+        if ky and ks and ky != ks:
+            print(f"  [FALLO] claves de frame distintas: {ky ^ ks}")
+            return False
+    print(f"  esquema yolo_sam3 == sam3_text  OK (claves: {sorted(yolo)})")
+    return True
+
+
 def main() -> int:
     print(f"PROJECT_ROOT: {PROJECT_ROOT}\n")
+
+    print("== T8: detector invalido => ValueError (sin GPU) ==")
+    t8_ok = check_invalid_detector()
+    if not t8_ok:
+        return 1
+    print()
 
     print("== Localizacion de video ==")
     video = find_video()
@@ -92,7 +147,7 @@ def main() -> int:
 
     print("== run_pipeline (modo cuota) ==")
     result = run_pipeline(video)
-    mp4_path, json_path = result["video"], result["detections"]
+    mp4_path, json_path = result["video"], result["json"]
     print(f"  mp4 : {mp4_path}")
     print(f"  json: {json_path}\n")
 
@@ -109,8 +164,13 @@ def main() -> int:
         f"fps={payload['fps']}"
     )
 
+    print("\n== T9/T10: yolo_sam3 vs sam3_text en segmentacion (pod/GPU) ==")
+    if not check_detector_modes(video):
+        print("\n[FALLO] el detector inyectable no produjo el esquema esperado.")
+        return 1
+
     print("\n== Resultado ==")
-    print("  OK: demostracion de run_pipeline completada.")
+    print("  OK: demostracion de run_pipeline + detector inyectable completada.")
     return 0
 
 

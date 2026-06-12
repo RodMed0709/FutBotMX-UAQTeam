@@ -132,10 +132,12 @@ def run_inference(
         render_video: si ``True`` (por defecto, uso de un solo video) genera el mp4
             anotado; si ``False`` solo escribe el JSON. Ortogonal al modo y a
             ``include_masks``.
-        detector: estrategia de detección por frame para ``mode="tracking"``
-            (``"sam3_text"`` | ``"yolo_sam3"`` o un callable). ``None`` ⇒ la config
-            (clave ``detector``) o ``"sam3_text"``. En ``mode="segmentation"`` se
-            **ignora** (fuera de alcance).
+        detector: estrategia de detección por frame (``"sam3_text"`` | ``"yolo_sam3"``).
+            ``None`` ⇒ la config (clave ``detector``) o ``"sam3_text"``. **Ortogonal al
+            modo**: aplica en **ambos** modos. En ``mode="segmentation"`` selecciona la
+            estrategia por-frame (``obj_id`` inestable, sin asociación temporal); en
+            ``mode="tracking"`` además alimenta al tracker. Un nombre inválido levanta
+            ``ValueError`` antes de cargar SAM3.
         tracker: tracker para ``mode="tracking"`` (``"bytetrack"`` | ``"botsort"``).
             ``None`` ⇒ la config (``tracking.tracker``) o ``"bytetrack"``. Ortogonal a
             ``detector``. En ``mode="segmentation"`` se **ignora**.
@@ -163,6 +165,7 @@ def run_inference(
             bundle=bundle,
             include_masks=include_masks,
             render_video=render_video,
+            detector=detector,
         )
         return {"json": res["json"], "video": res["video"], "index": None}
 

@@ -27,10 +27,12 @@ fronts two implementations, all config-driven and reusing the same building bloc
   `{"json", "video", "index"}` (`index` is `None` in segmentation), and propagates a
   preloaded `bundle` to both modes. Does **not** reimplement the inference loop.
 - **Segmentation** (`src/core/pipeline.py::run_pipeline`, `mode="per_frame"`):
-  `video → extract_frames → detect_classes_in_frame (per frame, per class) →
-  overlay → mp4 + JSON`. `obj_id`s are **not** stable across frames here. Now also
-  accepts `classes`/`bundle` (like `track_video`) for per-call class filtering and
-  model reuse.
+  `video → extract_frames → detector_fn (per frame, per class) → overlay → mp4 +
+  JSON`. `obj_id`s are **not** stable across frames here. Now also accepts
+  `classes`/`bundle`/`detector` (like `track_video`) for per-call class filtering,
+  model reuse and **pluggable detection** (`sam3_text` | `yolo_sam3`, resolved via
+  `get_detector`) — so `yolo_sam3` works as a standalone segmenter, not only inside
+  tracking.
 - **Tracking** (`src/core/tracking.py::track_video`): streams the video frame by
   frame, reuses the per-frame detector, derives boxes from masks and associates
   them with **ByteTrack** (`trackers.ByteTrackTracker`, one tracker per class) into
