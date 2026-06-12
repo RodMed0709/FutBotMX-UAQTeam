@@ -39,6 +39,10 @@ fronts two implementations, all config-driven and reusing the same building bloc
   **stable, globally-unique `obj_id`s**. Handles full video without OOM. Output:
   incremental mp4 + a tracker-agnostic track index (`Track`/`TrackObservation`) as
   JSON (no masks).
+- **Progress bars**: both `run_pipeline` and `track_video` show a per-video `tqdm`
+  bar (ETA + frames/s) controlled by a `progress: bool = True` flag threaded through
+  `run_inference`/`run_batch` (set `progress=False` to silence). `tqdm.auto`, lazy
+  import, `leave=False`.
 
 Atomic tasks done (each with `.specs/<task>/{spec,plan,tasks}.md`): env_setup,
 editable_module, abs_dir_func, frame_extraction, abs_video_path, data_volume_mounts,
@@ -67,7 +71,8 @@ conventions) and the modules compose into the two pipelines above:
     (colors **by class**, from config); `show_overlay` is display-only.
   - `frame_extraction.py` → `extract_frames` (quota/all, returns `(N,H,W,3)`),
     `get_frame_indices` (the sampled source indices), `iter_frames` (streaming
-    generator for tracking), `get_video_fps`. All accept a path relative to
+    generator for tracking), `get_video_fps`, `get_frame_count` (cheap metadata
+    frame count, used to size progress bars). All accept a path relative to
     `PROJECT_ROOT` **or** an absolute path.
   - `video_writer.py` → `write_video` (batch) and `open_video_writer` (incremental
     context manager, used by tracking).

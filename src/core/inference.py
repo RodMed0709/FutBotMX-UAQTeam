@@ -97,6 +97,7 @@ def run_inference(
     detector: str | None = None,
     tracker: str | None = None,
     run_label: str | None = None,
+    progress: bool = True,
 ) -> dict:
     """Ejecuta la inferencia de un video por la puerta única de la fachada.
 
@@ -146,6 +147,8 @@ def run_inference(
             defecto (``inference/<run_label>/<stem>/…``); evita que varias configs se
             pisen al correr sobre los mismos videos. ``None`` ⇒ ruta plana actual. Se
             **ignora** si se pasa ``output_path``.
+        progress: si ``True`` (por defecto) muestra una barra de progreso ``tqdm`` por
+            video (ETA + frames/s); ``False`` la silencia. Aplica a ambos modos.
 
     Returns:
         ``{"json": Path, "video": Path | None, "index": dict | None}``. ``"video"`` es
@@ -172,6 +175,7 @@ def run_inference(
             render_video=render_video,
             detector=detector,
             run_label=run_label,
+            progress=progress,
         )
         return {"json": res["json"], "video": res["video"], "index": None}
 
@@ -188,6 +192,7 @@ def run_inference(
             detector=detector,
             tracker=tracker,
             run_label=run_label,
+            progress=progress,
         )
 
     raise ValueError(f"mode '{mode}' no soportado (usa 'segmentation' o 'tracking').")

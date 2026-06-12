@@ -169,6 +169,7 @@ def run_batch(
     detector: str | None = None,
     tracker: str | None = None,
     run_label: str | None = None,
+    progress: bool = True,
 ) -> list[dict]:
     """Corre la inferencia sobre un lote de videos reusando ``run_inference``.
 
@@ -206,6 +207,9 @@ def run_batch(
             (``inference/<run_label>/<stem>/…``). Aisla las salidas de cada config
             para que no se pisen, y hace el **skip-done por config** (un video hecho
             bajo una config no se salta bajo otra). ``None`` ⇒ ruta plana actual.
+        progress: si ``True`` (por defecto) muestra una barra ``tqdm`` por video
+            (debajo del resumen ``[i/n]``); ``False`` la silencia. Se propaga a
+            ``run_inference``.
 
     Returns:
         ``list[dict]``, una entrada por video:
@@ -268,6 +272,7 @@ def run_batch(
                 detector=detector,
                 tracker=tracker,
                 run_label=run_label,
+                progress=progress,
             )
             elapsed = time.perf_counter() - t0
             peak_vram = _read_peak_vram_mb()

@@ -18,6 +18,7 @@ Uso (en el contenedor):
 
 from __future__ import annotations
 
+import inspect
 import json
 import sys
 from pathlib import Path
@@ -28,6 +29,14 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.core import extract_frames, get_video_fps  # noqa: E402
+from src.core.batch import run_batch  # noqa: E402
+from src.core.frame_extraction import (  # noqa: E402
+    get_frame_count,
+    get_frame_indices,
+)
+from src.core.inference import run_inference  # noqa: E402
+from src.core.pipeline import run_pipeline  # noqa: E402
+from src.core.tracking import track_video  # noqa: E402
 from src.utils import get_abs_path  # noqa: E402
 
 
@@ -86,8 +95,21 @@ def find_video() -> Path | None:
     return movs[0].relative_to(PROJECT_ROOT)
 
 
+def check_progress_signatures() -> None:
+    """T7 — las 4 funciones exponen ``progress=True`` (sin GPU, sin video)."""
+    print("== T7 — firmas con progress=True ==")
+    for fn in (run_pipeline, track_video, run_inference, run_batch):
+        p = inspect.signature(fn).parameters.get("progress")
+        assert p is not None, f"{fn.__name__} no expone progress"
+        assert p.default is True, f"{fn.__name__}.progress {p.default!r} != True"
+        print(f"  [ok] {fn.__name__}(progress=True)")
+    print()
+
+
 def main() -> int:
     print(f"PROJECT_ROOT: {PROJECT_ROOT}\n")
+
+    check_progress_signatures()
 
     print("== Localizacion de video ==")
     video = find_video()
@@ -115,6 +137,16 @@ def main() -> int:
     print(f"  fps: {fps}")
     assert isinstance(fps, float) and fps > 0, f"fps invalido: {fps!r}"
     print("  fps es un float > 0  OK\n")
+
+    print("== get_frame_count ==")
+    count = get_frame_count(video)
+    print(f"  frames: {count}")
+    assert isinstance(count, int) and count > 0, f"count invalido: {count!r}"
+    assert count == frames_all.shape[0], "get_frame_count != total de all_frames"
+    assert count == len(get_frame_indices(video, all_frames=True)), (
+        "get_frame_count != nº de indices del modulo"
+    )
+    print("  get_frame_count coincide con el total del modulo  OK\n")
 
     print("== Resultado ==")
     print("  OK: demostracion de extract_frames completada.")

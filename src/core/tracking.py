@@ -30,7 +30,7 @@ from pathlib import Path
 
 import numpy as np
 
-from src.core.frame_extraction import get_video_fps, iter_frames
+from src.core.frame_extraction import get_frame_count, get_video_fps, iter_frames
 from src.core.inference_schema import (
     build_header,
     frame_record,
@@ -185,6 +185,7 @@ def track_video(
     detector: str | Callable | None = None,
     tracker: str | None = None,
     run_label: str | None = None,
+    progress: bool = True,
 ) -> dict:
     """Trackea un video con detección per-frame inyectable + ByteTrack por clase.
 
@@ -228,6 +229,9 @@ def track_video(
             defecto (``inference/<run_label>/<stem>/…``); evita que distintas configs
             se pisen. ``None`` (por defecto) ⇒ ruta plana actual. Se **ignora** si se
             pasa ``output_path`` (que tiene prioridad).
+        progress: si ``True`` (por defecto) muestra una barra de progreso ``tqdm``
+            sobre los frames (con ETA y frames/s); ``False`` la silencia. No afecta la
+            salida.
 
     Returns:
         ``{"json": <ruta_json>, "video": <ruta_mp4_o_None>, "index": <dict
@@ -290,13 +294,27 @@ def track_video(
     resolution: tuple[int, int] | None = None
     num_frames = 0
 
+    # Total para la barra de progreso (metadata, no decodifica); acotado por max_frames.
+    from tqdm.auto import tqdm  # perezoso: solo al iterar
+
+    n_total = get_frame_count(video_path)
+    if max_frames is not None:
+        n_total = min(int(max_frames), n_total)
+
     # El mp4 es opcional: con render_video=False usamos nullcontext (no abre imageio
     # ni crea archivo) y el mismo bucle corre sin escribir video.
     writer_cm = (
         open_video_writer(mp4_path, fps=fps) if render_video else nullcontext(None)
     )
     with writer_cm as append:
-        for frame_index, frame in iter_frames(video_path, max_frames):
+        for frame_index, frame in tqdm(
+            iter_frames(video_path, max_frames),
+            total=n_total,
+            desc=f"track {stem}",
+            unit="frame",
+            leave=False,
+            disable=not progress,
+        ):
             if resolution is None:
                 resolution = (frame.shape[0], frame.shape[1])
             num_frames += 1

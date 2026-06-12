@@ -242,3 +242,25 @@ def get_video_fps(video_path: Path) -> float:
     abs_path = _resolve_video_path(video_path)
     reader = decord.VideoReader(str(abs_path))
     return float(reader.get_avg_fps())
+
+
+def get_frame_count(video_path: Path) -> int:
+    """Devuelve el numero total de frames de un video.
+
+    Abre el video solo para leer sus metadatos (``len`` de decord, no decodifica).
+    Util para dimensionar una barra de progreso cuando se itera en streaming.
+
+    Args:
+        video_path: ruta del video (Path). Puede ser relativa a PROJECT_ROOT o
+            absoluta a un archivo valido, igual que en ``extract_frames``.
+
+    Returns:
+        El numero total de frames como ``int``.
+
+    Raises:
+        ValueError: si ``video_path`` no es de tipo Path.
+        FileNotFoundError: si la ruta del video no existe o no es un archivo.
+    """
+    abs_path = _resolve_video_path(video_path)
+    reader = decord.VideoReader(str(abs_path))
+    return len(reader)

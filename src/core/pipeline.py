@@ -98,6 +98,7 @@ def run_pipeline(
     render_video: bool = True,
     detector: str | None = None,
     run_label: str | None = None,
+    progress: bool = True,
 ) -> dict[str, Path | None]:
     """Ejecuta el pipeline por-frame y genera el JSON del esquema (+ mp4 opcional).
 
@@ -138,6 +139,8 @@ def run_pipeline(
             defecto (``inference/<run_label>/<stem>/…``); evita que distintas configs
             se pisen. ``None`` (por defecto) ⇒ ruta plana actual. Se **ignora** si se
             pasa ``output_path`` (que tiene prioridad).
+        progress: si ``True`` (por defecto) muestra una barra de progreso ``tqdm`` por
+            frame (con ETA y frames/s); ``False`` la silencia. No afecta la salida.
 
     Returns:
         ``{"json": <ruta_json>, "video": <ruta_mp4_o_None>}``. La clave ``"video"``
@@ -186,10 +189,19 @@ def run_pipeline(
     # Indices REALES en el video fuente (alineados por posicion con extract_frames).
     source_indices = get_frame_indices(Path(video_path), all_frames=all_frames)
 
+    from tqdm.auto import tqdm  # perezoso: solo al iterar
+
     composed: list[np.ndarray] = []
     records: list[dict] = []
-    for i, frame in enumerate(frames):
-        print(f"  frame {i + 1}/{total}")
+    bar = tqdm(
+        enumerate(frames),
+        total=total,
+        desc=f"seg {stem}",
+        unit="frame",
+        leave=False,
+        disable=not progress,
+    )
+    for i, frame in bar:
         dets = detector_fn(frame, classes=classes, bundle=bundle)
         if render_video:
             composed.append(overlay_detections(frame, dets, classes=classes))
