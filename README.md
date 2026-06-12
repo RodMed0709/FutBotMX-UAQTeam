@@ -86,13 +86,13 @@ Como aún no hay anotación manual, no se mide exactitud (mAP/MOTA/mIoU) sino
 gratis, así que el benchmark separa los ejes:
 
 - **Fase 1 — detectores**
-  ([`01_benchmark_detectors.ipynb`](notebooks/benchmark_models/01_benchmark_detectors.ipynb)):
+  ([`01_benchmark_detectors.ipynb`](notebooks/fase_3_benchmark_models/01_benchmark_detectors.ipynb)):
   `sam3_text` vs `yolo_sam3`, eficiencia (FPS, VRAM).
 - **Fase 2 — trackers 2×2**
-  ([`02_benchmark_trackers.ipynb`](notebooks/benchmark_models/02_benchmark_trackers.ipynb)):
+  ([`02_benchmark_trackers.ipynb`](notebooks/fase_3_benchmark_models/02_benchmark_trackers.ipynb)):
   detector × tracker, consistencia (`frag_rate`, `tracklet_len`).
 - **Fase 3 — análisis**
-  ([`03_benchmark_analysis.ipynb`](notebooks/benchmark_models/03_benchmark_analysis.ipynb)):
+  ([`03_benchmark_analysis.ipynb`](notebooks/fase_3_benchmark_models/03_benchmark_analysis.ipynb)):
   gráficas comparativas.
 
 Corre sobre 5 videos de **testing** elegidos con semilla fija. Es **honesto**: YOLO se
@@ -105,7 +105,7 @@ ambos detectores.
 
 Corrida sobre 5 videos de testing (seed=36), tracking acotado a 2500 frames. Gráficas
 generadas por
-[`03_benchmark_analysis.ipynb`](notebooks/benchmark_models/03_benchmark_analysis.ipynb).
+[`03_benchmark_analysis.ipynb`](notebooks/fase_3_benchmark_models/03_benchmark_analysis.ipynb).
 **Sin ground-truth: miden eficiencia y consistencia, no exactitud.**
 
 ### Fase 1 — eficiencia del detector
@@ -205,13 +205,13 @@ pip install -e .                  # src/ como paquete editable -> import src
 
 - [`cookbook_pipeline.ipynb`](notebooks/cookbook_pipeline.ipynb) — **recetario de la
   API (empieza aquí)**.
-- [`benchmark_models/00_phase2_cost_smoke.ipynb`](notebooks/benchmark_models/00_phase2_cost_smoke.ipynb)
+- [`fase_3_benchmark_models/00_phase2_cost_smoke.ipynb`](notebooks/fase_3_benchmark_models/00_phase2_cost_smoke.ipynb)
   — smoke de costo (máscaras casi gratis).
-- [`benchmark_models/01_benchmark_detectors.ipynb`](notebooks/benchmark_models/01_benchmark_detectors.ipynb)
+- [`fase_3_benchmark_models/01_benchmark_detectors.ipynb`](notebooks/fase_3_benchmark_models/01_benchmark_detectors.ipynb)
   — Fase 1: eficiencia de detectores.
-- [`benchmark_models/02_benchmark_trackers.ipynb`](notebooks/benchmark_models/02_benchmark_trackers.ipynb)
+- [`fase_3_benchmark_models/02_benchmark_trackers.ipynb`](notebooks/fase_3_benchmark_models/02_benchmark_trackers.ipynb)
   — Fase 2: trackers 2×2 (consistencia).
-- [`benchmark_models/03_benchmark_analysis.ipynb`](notebooks/benchmark_models/03_benchmark_analysis.ipynb)
+- [`fase_3_benchmark_models/03_benchmark_analysis.ipynb`](notebooks/fase_3_benchmark_models/03_benchmark_analysis.ipynb)
   — Fase 3: gráficas de análisis.
 - [`fase_0/`](notebooks/fase_0/) — exploración inicial (spikes SAM3).
 
