@@ -41,6 +41,44 @@ def _point_color(obj_id: int, class_name: str) -> tuple[int, int, int]:
     return _ROBOT_PALETTE[obj_id % len(_ROBOT_PALETTE)]
 
 
+def draw_field_overlay(
+    frame: np.ndarray,
+    H: np.ndarray | None,
+    corners: np.ndarray | None = None,
+) -> np.ndarray:
+    """Reproyecta la cancha sobre el frame del video para confirmar la homografia.
+
+    Con ``H`` (img->cm) dibuja, vía ``H^-1``, el **rectangulo interior** (verde) y el
+    **circulo central** (cian) en coordenadas de imagen; si se pasan ``corners`` (las 4
+    esquinas detectadas en la imagen), las marca en azul. Replica ``draw_field_overlay``
+    de la demo (camino C). Colores en convencion **RGB** (lo que entrega ``iter_frames``).
+    Dibuja in place sobre ``frame`` y lo devuelve. ``cv2`` perezoso.
+    """
+    import cv2
+
+    out = frame
+    b = ft.LINE_BORDER_CM
+    if H is not None:
+        Hinv = np.linalg.inv(H)
+
+        def c2i(p: tuple[float, float]) -> tuple[int, int]:
+            q = cv2.perspectiveTransform(np.array([[p]], np.float32), Hinv).reshape(2)
+            return int(q[0]), int(q[1])
+
+        inner = [(b, b), (ft.LENGTH_CM - b, b),
+                 (ft.LENGTH_CM - b, ft.WIDTH_CM - b), (b, ft.WIDTH_CM - b)]
+        cv2.polylines(out, [np.array([c2i(p) for p in inner], np.int32)], True,
+                      (0, 255, 0), 3, cv2.LINE_AA)
+        circ = [c2i((ft.CENTER_CM[0] + ft.CIRCLE_RADIUS_CM * np.cos(t),
+                     ft.CENTER_CM[1] + ft.CIRCLE_RADIUS_CM * np.sin(t)))
+                for t in np.linspace(0, 2 * np.pi, 40)]
+        cv2.polylines(out, [np.array(circ, np.int32)], True, (0, 255, 255), 2, cv2.LINE_AA)
+    if corners is not None:
+        for p in np.asarray(corners).astype(int):
+            cv2.circle(out, (int(p[0]), int(p[1])), 13, (255, 0, 0), -1, cv2.LINE_AA)
+    return out
+
+
 def orientation_k(field_center: tuple[float, float], goal_center: tuple[float, float]) -> int:
     """Cuantas rotaciones de 90deg (CCW, ``np.rot90``) alinear el minimap con la imagen.
 
@@ -63,10 +101,10 @@ class MinimapRenderer:
 
     def __init__(
         self,
-        scale: float = 2.2,
-        margin_cm: float = 10.0,
+        scale: float = 2.6,
+        margin_cm: float = 3.0,
         trail_len: int = 64,
-        panel_width_frac: float = 0.38,
+        panel_width_frac: float = 0.34,
         trail_persist: int = 24,
     ) -> None:
         """Inicializa el renderer.
@@ -139,7 +177,12 @@ class MinimapRenderer:
             self._last_seen.pop(oid, None)
 
     def render(self) -> np.ndarray:
-        """Dibuja el minimap del estado actual (cancha + trails + posicion actual)."""
+        """Dibuja el minimap del estado actual (cancha + trails + marcadores).
+
+        Replica el render de la demo (camino C): el **balon** es un circulo naranja;
+        los **robots** son un **cuadro gris** (marcador uniforme). El **trail** sigue la
+        paleta por ``obj_id`` (robots) / naranja (balon) para distinguir trayectorias.
+        """
         import cv2
 
         canvas = self._base.copy()
@@ -147,18 +190,20 @@ class MinimapRenderer:
             if not trail:
                 continue
             class_name = self._class_of.get(obj_id, "robot")
-            color = _point_color(obj_id, class_name)
-
+            color = _point_color(obj_id, class_name)  # color del trail
             pts = [self._to_px(p) for p in trail]
+            x, y = pts[-1]
             if len(pts) >= 2:
                 cv2.polylines(
-                    canvas, [np.array(pts, dtype=np.int32)], False, color, 3, cv2.LINE_AA
+                    canvas, [np.array(pts, dtype=np.int32)], False, color, 2, cv2.LINE_AA
                 )
-            # Posicion actual (marcador mas grande para el balon).
-            is_ball = class_name in _BALL_CLASSES
-            r = 10 if is_ball else 8
-            cv2.circle(canvas, pts[-1], r, color, -1, cv2.LINE_AA)
-            cv2.circle(canvas, pts[-1], r, (20, 20, 20), 2, cv2.LINE_AA)
+            if class_name in _BALL_CLASSES:
+                cv2.circle(canvas, (x, y), 12, _BALL_COLOR, -1, cv2.LINE_AA)
+                cv2.circle(canvas, (x, y), 12, (20, 20, 20), 2, cv2.LINE_AA)
+            else:
+                s = 14
+                cv2.rectangle(canvas, (x - s, y - s), (x + s, y + s), (175, 175, 175), -1)
+                cv2.rectangle(canvas, (x - s, y - s), (x + s, y + s), (35, 35, 35), 2)
         if self._rotate_k:
             canvas = np.ascontiguousarray(np.rot90(canvas, self._rotate_k))
         return canvas

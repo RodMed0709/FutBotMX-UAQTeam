@@ -31,8 +31,7 @@ from src.core.auto_homography import VideoHomography  # camino C
 from src.core.frame_extraction import get_frame_count, get_video_fps, iter_frames
 from src.core.homography import mask_centroid, project_points
 from src.core.inference_schema import mask_to_bbox_centroid
-from src.core.minimap import MinimapRenderer
-from src.core.overlay import overlay_detections
+from src.core.minimap import MinimapRenderer, draw_field_overlay
 from src.core.sam3_loader import Sam3Bundle, load_sam3
 from src.core.segmentation import _load_classes, segment_with_text
 from src.core.video_writer import open_video_writer
@@ -216,7 +215,6 @@ def render_minimap_video(
     p_blue = _prompt_for(BLUE_CLASS, classes)
     p_robot = _prompt_for(ROBOT_CLASS, classes)
     p_ball = _prompt_for("orange_ball", classes)
-    anchor_classes = [c for c in classes if c["name"] in (FIELD_CLASS, YELLOW_CLASS, BLUE_CLASS)]
 
     fps = get_video_fps(video_path)
     if output_path is None:
@@ -262,7 +260,7 @@ def render_minimap_video(
                 H, _status = vh.update_masks(frame, field_mask, yc, bc)
             else:
                 vh.n_propagated += 1
-                H = vh.prev_H
+                H, _status = vh.prev_H, "propagated"
 
             # Objetos (id estable, clase, punto-pie).
             if frame_to_objs is not None:
@@ -280,8 +278,10 @@ def render_minimap_video(
 
             base = frame
             if draw_overlay:
-                dets = {FIELD_CLASS: f_dets, YELLOW_CLASS: y_dets, BLUE_CLASS: b_dets}
-                base = overlay_detections(frame, dets, classes=anchor_classes)
+                # Reproyecta la cancha (rectangulo + circulo) y, si el frame fue
+                # estimado con anclas, las 4 esquinas detectadas (como en la demo).
+                corners = vh.last_corners if _status == "anchors" else None
+                base = draw_field_overlay(frame, H, corners)
 
             composed = renderer.composite(base)
             last_composed = composed
