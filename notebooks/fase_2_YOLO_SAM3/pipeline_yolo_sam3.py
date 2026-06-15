@@ -21,11 +21,12 @@ from ultralytics import YOLO
 
 decord.bridge.set_bridge("native")
 
-CLASS_NAMES = {0: "robot", 1: "orange_ball", 2: "yellow_zone"}
+CLASS_NAMES = {0: "robot", 1: "orange_ball", 2: "yellow_zone", 3: "blue_zone"}
 COLORS = {
     "robot": (60, 130, 255),
     "orange_ball": (255, 140, 0),
     "yellow_zone": (255, 230, 0),
+    "blue_zone": (30, 90, 220),
     "green_floor": (50, 220, 70),
 }
 GREEN_PROMPT = "green playing surface with lines"
