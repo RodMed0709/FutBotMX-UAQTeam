@@ -64,7 +64,7 @@ config_aware_output_paths (`run_label` namespacing), progress_reporting (`tqdm` 
 
 Notebooks: `notebooks/cookbook_pipeline.ipynb` is the **API recipe book** (how to call
 every packaged function from your own notebook — start here before writing a new one);
-`notebooks/benchmark_models/01_benchmark_detectors.ipynb` /
+`notebooks/fase_3_benchmark_models/01_benchmark_detectors.ipynb` /
 `02_benchmark_trackers.ipynb` / `03_benchmark_analysis.ipynb` are the two-phase no-GT
 benchmark drivers + analysis; `notebooks/fase_0/` holds exploration spikes (SAM3) —
 exploratory reference, **not** pipeline code. Production code lives under `src/`.
@@ -148,7 +148,7 @@ Cross-cutting facts worth knowing before editing:
   `minimum_consecutive_frames` ↑).
 - **No-GT benchmark — ACTIVE.** Two-phase design (Fase 1 detectors by efficiency, Fase
   2 trackers 2×2 by consistency) over 5 seeded testing videos; drivers in
-  `notebooks/benchmark_models/0{1,2,3}_*.ipynb`, metrics module `src/eval/benchmark.py`.
+  `notebooks/fase_3_benchmark_models/0{1,2,3}_*.ipynb`, metrics module `src/eval/benchmark.py`.
   Results (figures committed under `assets/benchmark/`, summarized in `README.md`)
   exist; accuracy vs. ground-truth waits on the paused GT evaluation above.
 
