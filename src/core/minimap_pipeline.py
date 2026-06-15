@@ -8,9 +8,11 @@ Orquesta las piezas de fase_4:
    cercano (autocontenido, sin dependencias externas de tracking). De cada objeto
    se toma el **punto de contacto con el piso** (centro-inferior de la caja para
    robots; centroide para el balon).
-2. **Homografia por frame**: se segmentan con SAM3-texto las anclas
-   (``green_floor``, ``yellow_zone``, ``blue_zone``) y se estima ``H`` con
-   ``src.core.homography``.
+2. **Homografia por frame** (camino C): se segmenta con SAM3-texto la alfombra
+   (``green_floor``) y se toman los centroides de portería (``yellow_zone``/
+   ``blue_zone``); ``src.core.auto_homography.VideoHomography.update_masks`` estima
+   ``H`` (img->cm) sobre el rectángulo interior de líneas + orientación por color de
+   portería, con lock de arranque, gate de consistencia temporal, EMA y propagación.
 3. **Render**: se proyectan las posiciones al campo y se dibujan como trails en el
    minimap (``src.core.minimap``), compuesto sobre cada frame y escrito a un mp4.
 
@@ -25,14 +27,9 @@ from pathlib import Path
 
 import numpy as np
 
+from src.core.auto_homography import VideoHomography  # camino C
 from src.core.frame_extraction import get_frame_count, get_video_fps, iter_frames
-from src.core.homography import (
-    FrameHomography,
-    HomographyState,
-    estimate_homography,
-    mask_centroid,
-    project_points,
-)
+from src.core.homography import mask_centroid, project_points
 from src.core.inference_schema import mask_to_bbox_centroid
 from src.core.minimap import MinimapRenderer
 from src.core.overlay import overlay_detections
@@ -232,7 +229,9 @@ def render_minimap_video(
     if max_frames is not None:
         n_total = min(int(max_frames), n_total)
 
-    state = HomographyState()
+    vh = VideoHomography(smooth_beta=smooth_beta)
+    # El camino C hornea la orientación en H (amarilla siempre a x<L/2), así que el
+    # minimap canónico ya queda orientado: NO se llama a renderer.orient_once.
     renderer = MinimapRenderer()
     last_composed = None
     n_frames = 0
@@ -252,11 +251,18 @@ def render_minimap_video(
             field_mask = _largest_mask(f_dets)
             yellow_mask = _largest_mask(y_dets)
             blue_mask = _largest_mask(b_dets)
-            fh: FrameHomography = estimate_homography(
-                field_mask, yellow_mask, blue_mask, state, smooth_beta=smooth_beta
-            )
-            # Orientacion del minimap fijada una vez (campo vertical -> minimap vertical).
-            renderer.orient_once(mask_centroid(field_mask), mask_centroid(yellow_mask))
+            # Centroides de portería (en la imagen) para fijar la orientación. La azul
+            # suele venir vacía (SAM3 no la segmenta) -> bc=None; basta la amarilla.
+            yc = mask_centroid(yellow_mask)
+            bc = mask_centroid(blue_mask)
+            # Camino C: H sobre la alfombra (SAM3) + centroides de portería. solve_masks
+            # solo usa color para detectar BLANCO (hue-agnóstico), así que el frame RGB
+            # de iter_frames sirve sin convertir a BGR. Si no hay alfombra, se propaga.
+            if field_mask is not None:
+                H, _status = vh.update_masks(frame, field_mask, yc, bc)
+            else:
+                vh.n_propagated += 1
+                H = vh.prev_H
 
             # Objetos (id estable, clase, punto-pie).
             if frame_to_objs is not None:
@@ -265,9 +271,9 @@ def render_minimap_video(
                 objs = tracker.update(_detect_objects(frame, p_robot, p_ball, bundle))
 
             projected: list[tuple[int, str, float, float]] = []
-            if fh.H is not None and objs:
+            if H is not None and objs:
                 feet = np.array([foot for _, _, foot in objs], dtype=np.float32)
-                cm = project_points(feet, fh.H)
+                cm = project_points(feet, H)
                 for (obj_id, cls, _), (x_cm, y_cm) in zip(objs, cm):
                     projected.append((obj_id, cls, float(x_cm), float(y_cm)))
             renderer.update(projected)
@@ -291,6 +297,10 @@ def render_minimap_video(
     return {
         "video": output_path,
         "n_frames": n_frames,
-        "homography": {"estimated": state.n_estimated, "propagated": state.n_propagated},
+        "homography": {
+            "estimated": vh.n_estimated,
+            "propagated": vh.n_propagated,
+            "rejected": vh.n_rejected,
+        },
         "sample_frame": sample_path,
     }

@@ -22,12 +22,26 @@
 - [x] **5 videos demo** del camino C (`IMG_9933_a/b/c`, `IMG_9938_a/b`) + `batch.log`
 - [x] Mover módulos a `src/core/` (homography, minimap, minimap_pipeline, field_template)
 
+## Consolidación al repo (rama `feat/consolidate-homography-path-c`, 2026-06-15)
+
+- [x] **Solver camino C en `src/core/auto_homography.py`** — copiado del script de notebook,
+      import a `from src.core import field_template as ft`, lint limpio (ruff)
+- [x] **Swap en `src/core/minimap_pipeline.py`**: `HomographyState`/`estimate_homography`
+      (camino A) → `VideoHomography.update_masks` (camino C); centroides de portería vía
+      `mask_centroid`; `bc=None` cuando SAM3 no segmenta la azul; sin `orient_once` (la H ya
+      orienta); dict de salida con `rejected`
+- [x] **Smoke local sin GPU** sobre `IMG_9933.MOV` (ruta color, no requiere SAM3):
+      `solve_masks` ok, error portería 11.9 cm; `VideoHomography` 40/40 frames con H
+      (37 estimados, 3 rechazados por el gate temporal) — coincide con lo medido por el equipo
+- [x] Notebook `01_homografia_minimap.ipynb` ya importa `render_minimap_video` (firma sin cambios)
+
 ## Pendiente
 
-- [ ] **Integrar `VideoHomography` (camino C, el que funciona) al `minimap_pipeline.py` del repo**,
-      reemplazando `estimate_homography` (camino A, refine probado y falla) y conservando los
-      objetos vía `tracks_json` de fase_2 (`yolo_sam3`)
-- [ ] Notebook `01_homografia_minimap.ipynb` ejecutable como recipe de la fase
+- [ ] **Corrida end-to-end en pod** (`render_minimap_video` usa SAM3 para la máscara
+      `green_floor`): mp4 con minimap + gate visual de trails sobre cámara superior, alimentando
+      objetos desde `tracks_json` de fase_2 (`yolo_sam3`)
+- [ ] (limpieza) decidir destino del camino A en `src/core/homography.py` (hoy sin uso por el
+      pipeline; `mask_centroid`/`project_points` sí se siguen reusando)
 - [ ] (opcional) `cv2.undistort` para la distorsión de barril (~10 cm de error central)
 - [ ] (opcional) NB12 depth (DepthAnything-V2) en pod — secundario: campo plano, la H ya da posición métrica
 
