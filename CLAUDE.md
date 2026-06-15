@@ -66,7 +66,10 @@ Notebooks: `notebooks/cookbook_pipeline.ipynb` is the **API recipe book** (how t
 every packaged function from your own notebook — start here before writing a new one);
 `notebooks/fase_3_benchmark_models/01_benchmark_detectors.ipynb` /
 `02_benchmark_trackers.ipynb` / `03_benchmark_analysis.ipynb` are the two-phase no-GT
-benchmark drivers + analysis; `notebooks/fase_0/` holds exploration spikes (SAM3) —
+benchmark drivers + analysis; `notebooks/fase_4_homografia/` holds the field-homography +
+minimap strand (camera-superior input → metric top-down minimap with trails); `notebooks/
+fase_5_event_analysis/` is the planned match-analysis strand (zones/possession over tracks,
+built on the homography output); `notebooks/fase_0/` holds exploration spikes (SAM3) —
 exploratory reference, **not** pipeline code. Production code lives under `src/`.
 
 ### Code architecture (the big picture)
@@ -107,6 +110,11 @@ conventions) and the modules compose into the two pipelines above:
     has `rle`. No SAM3, no re-inference; excludes configurable classes
     (`visualization.overlay_excluded_classes`, default `green_floor`). The live
     `overlay_detections` (mask fill by class) is untouched.
+  - `field_template.py` / `homography.py` / `minimap.py` / `minimap_pipeline.py` —
+    **fase_4 homography strand** (see the ongoing-processes note below): metric field
+    geometry, per-frame homography (SAM3-only path A), trails `MinimapRenderer`, and the
+    minimap driver. The working path (C, SAM3+YOLO) still lives in
+    `notebooks/fase_4_homografia/`, pending consolidation into `minimap_pipeline.py`.
 - **`src/data/` — dataset preparation (not inference):**
   - `metadata.py::build_metadata_csv` → `assets/db_metadata.csv` manifest with a
     reproducible `split` column (0=reserve, 1=fine-tuning [23], 2=testing [20];
@@ -151,6 +159,23 @@ Cross-cutting facts worth knowing before editing:
   `notebooks/fase_3_benchmark_models/0{1,2,3}_*.ipynb`, metrics module `src/eval/benchmark.py`.
   Results (figures committed under `assets/benchmark/`, summarized in `README.md`)
   exist; accuracy vs. ground-truth waits on the paused GT evaluation above.
+- **Field homography + minimap (fase_4) — ACTIVE, consolidation pending.** SDD task
+  `.specs/field_homography/`. Projects robots/ball to a **metric top-down field**
+  (243×182 cm) via per-frame homography and overlays a **trails minimap** (deadline-driven,
+  convocatoria 3.7.3 + 3.5.2). Input must be the **camera-superior** footage (full field;
+  Meta-Glasses portrait won't work). New `src/core/` modules: `field_template.py`,
+  `homography.py`, `minimap.py`, `minimap_pipeline.py`; config gained a `blue_zone` class.
+  **Three paths exist** (see `notebooks/fase_4_homografia/context.md` for the full log):
+  A = SAM3-only (`src/core/homography.py`, `green_floor` quad — measured *unreliable* at the
+  carpet edge, `_refine` tried-and-fails); B = color-auto (`auto_homography.py`, local, inner
+  white-line rectangle, ~85% ok / ~12 cm, passed adversarial review); **C = SAM3+YOLO
+  integrated (`pod_minimap_sam3.py`, pod GPU) — the chosen path for Profesional**, 5 demo
+  videos, 9–23 cm error. **Open:** consolidate path C's `VideoHomography`/`solve_masks` into
+  the repo's `minimap_pipeline.py` (today still on path A) feeding objects from fase_2
+  `tracks_json`. Quantitative metrics belong to fase_5, not here.
+- **Match event analysis (fase_5) — PLANNED.** Goals/possession/zones/heatmaps in **real cm**,
+  built **on top of** the fase_4 homography output (renamed from the old `fase_4_event_analysis`).
+  Not started in code.
 
 **Pending / TODO (not yet done):**
 - **Clean up `testing/` scripts to drop the `sys.path` patch.** `src` is now an

@@ -61,3 +61,24 @@ Punto de contacto con el piso (centro-inferior bbox robot; centroide balón) →
 - Clip corto: inspección visual de trails plausibles sobre la cancha.
 - Video completo: ratio propagated/estimated razonable (<~40% propagado).
 - Revisión final por agente revisor de código adversarial.
+
+## Adenda — realidad de la ejecución (reconciliación)
+
+El método de §Método describe el **camino A (SAM3 puro)**, la intención inicial. En la
+ejecución, el ancla "borde de alfombra `green_floor`" resultó **poco fiable** (la portería
+que sobresale corrompe el borde superior y el frame recorta el lado derecho; `_refine`
+quedó *probado y falla*). El trabajo pivotó a dos caminos que sí miden bien:
+
+- **B — color automático** (`notebooks/fase_4_homografia/auto_homography.py`, local sin GPU):
+  ancla = 4 esquinas del **rectángulo interior** de líneas blancas (visible aunque se corte
+  el borde de alfombra). **Medido: 85% ok, error ~12 cm (~5% campo).** Pasó revisión adversarial.
+- **C — SAM3+YOLO integrado** (`notebooks/fase_4_homografia/pod_minimap_sam3.py`, pod GPU):
+  **el elegido para categoría Profesional.** YOLO (robot/balón/porterías) + SAM3 `green_floor`
+  → `solve_masks` → H sobre anclas SAM3/YOLO. Gate de consistencia temporal + EMA + propagación.
+  **5 videos demo, error 9–23 cm.** Cumple el gate visual y de reproyección de §Verificación.
+
+**Pendiente de consolidación:** integrar `VideoHomography`/`solve_masks` (camino C) al
+`minimap_pipeline.py` del repo (hoy aún en el camino A) y conservar los objetos vía
+`tracks_json` de fase_2 (`yolo_sam3`). Las **métricas cuantitativas** (velocidad cm/s,
+posesión, zonas, heatmap) que la H métrica habilita **no** son de esta tarea: pasan a
+**fase_5 (análisis de eventos)**.
