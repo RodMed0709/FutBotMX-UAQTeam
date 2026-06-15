@@ -171,6 +171,8 @@ def render_minimap_video(
     tracks_json: str | Path | None = None,
     output_path: str | Path | None = None,
     max_frames: int | None = None,
+    start_frame: int = 0,
+    frame_step: int = 1,
     bundle: Sam3Bundle | None = None,
     draw_overlay: bool = False,
     smooth_beta: float = 0.4,
@@ -184,8 +186,14 @@ def render_minimap_video(
             se detectan y siguen los objetos en el mismo paso (autocontenido).
         output_path: ruta del mp4 de salida. Si es ``None`` se escribe en
             ``notebooks/fase_4_homografia/outputs/<stem>_minimap.mp4``.
-        max_frames: tope de frames. Con ``tracks_json`` se usa el rango cubierto por
-            los tracks si es ``None``; sin tracks, ``None`` recorre todo el video.
+        max_frames: tope de **frames procesados** (cantidad). Con ``tracks_json`` y sin
+            recorte (``start_frame=0``/``frame_step=1``) se usa el rango cubierto por los
+            tracks si es ``None``; en cualquier otro caso ``None`` recorre hasta el final.
+        start_frame: frame fuente donde empezar (0 = inicio). Para renderizar un tramo
+            concreto (p. ej. una jugada) sin procesar todo el video.
+        frame_step: paso de muestreo (``1`` todos, ``2`` 1 de cada 2…). Abarata el costo
+            proporcionalmente. Los ``frame_index`` de ``tracks_json`` siguen casando
+            porque son índices del video fuente.
         bundle: modelo SAM3 cargado; si ``None`` se carga con ``load_sam3()``.
         draw_overlay: si ``True`` dibuja las mascaras de anclas sobre el frame
             (depuracion de la homografia).
@@ -193,7 +201,8 @@ def render_minimap_video(
         progress: barra de progreso ``tqdm``.
 
     Returns:
-        ``{"video", "n_frames", "homography": {"estimated", "propagated"}, "sample_frame"}``.
+        ``{"video", "n_frames", "homography": {"estimated", "propagated", "rejected"},
+        "sample_frame"}``.
     """
     from tqdm.auto import tqdm
 
@@ -205,7 +214,9 @@ def render_minimap_video(
     tracker = None
     if tracks_json is not None:
         frame_to_objs, max_index = _load_tracks_from_json(Path(tracks_json))
-        if max_frames is None and max_index >= 0:
+        # El default derivado de los tracks solo aplica al recorrido completo desde 0;
+        # con recorte (start_frame/frame_step) max_frames es una cuenta, no un rango.
+        if max_frames is None and max_index >= 0 and start_frame == 0 and frame_step == 1:
             max_frames = max_index + 1
     else:
         tracker = _GreedyTracker()
@@ -223,9 +234,10 @@ def render_minimap_video(
         output_path = out_dir / f"{video_path.stem}_minimap.mp4"
     output_path = Path(output_path)
 
-    n_total = get_frame_count(video_path)
-    if max_frames is not None:
-        n_total = min(int(max_frames), n_total)
+    # Frames a procesar tras aplicar start_frame/frame_step (para dimensionar la barra).
+    total_src = get_frame_count(video_path)
+    strided = max(0, (total_src - int(start_frame) + int(frame_step) - 1) // int(frame_step))
+    n_total = strided if max_frames is None else min(int(max_frames), strided)
 
     vh = VideoHomography(smooth_beta=smooth_beta)
     # El camino C hornea la orientación en H (amarilla siempre a x<L/2), así que el
@@ -236,7 +248,8 @@ def render_minimap_video(
 
     with open_video_writer(output_path, fps=fps) as append:
         for frame_index, frame in tqdm(
-            iter_frames(video_path, max_frames), total=n_total,
+            iter_frames(video_path, max_frames, start_frame=start_frame, frame_step=frame_step),
+            total=n_total,
             desc=f"minimap {video_path.stem}", unit="frame", leave=False, disable=not progress,
         ):
             n_frames += 1

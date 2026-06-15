@@ -192,7 +192,12 @@ def extract_frames(video_path: Path, all_frames: bool = False) -> np.ndarray:
     return frames
 
 
-def iter_frames(video_path: Path, max_frames: int | None = None):
+def iter_frames(
+    video_path: Path,
+    max_frames: int | None = None,
+    start_frame: int = 0,
+    frame_step: int = 1,
+):
     """Itera los frames de un video **de uno en uno** (streaming), sin cargar todo.
 
     Pensado para tracking sobre videos largos: a diferencia de ``extract_frames``
@@ -202,23 +207,37 @@ def iter_frames(video_path: Path, max_frames: int | None = None):
     Args:
         video_path: ruta del video (Path), relativa a PROJECT_ROOT o absoluta, igual
             que en ``extract_frames``.
-        max_frames: si es ``None``, recorre todos los frames; si es un entero, se
-            acota a los primeros ``max_frames`` (clip de prueba).
+        max_frames: si es ``None``, recorre hasta el final; si es un entero, acota la
+            **cantidad de frames entregados** (clip de prueba).
+        start_frame: índice del frame fuente donde empezar (0 = inicio). Permite
+            recorrer un tramo concreto del video (p. ej. una jugada).
+        frame_step: paso de muestreo; ``1`` recorre todos, ``2`` toma 1 de cada 2, etc.
+            Reduce el costo proporcionalmente.
 
     Yields:
         Tuplas ``(frame_index, frame_rgb)`` donde ``frame_index`` es el índice del
-        frame en el video fuente y ``frame_rgb`` es un ``np.ndarray (H, W, 3)`` RGB.
+        frame en el video fuente (refleja ``start_frame``/``frame_step``) y
+        ``frame_rgb`` es un ``np.ndarray (H, W, 3)`` RGB.
 
     Raises:
-        ValueError: si ``video_path`` no es de tipo Path.
+        ValueError: si ``video_path`` no es de tipo Path, o si ``start_frame`` < 0 o
+            ``frame_step`` < 1.
         FileNotFoundError: si la ruta del video no existe o no es un archivo.
     """
+    if start_frame < 0:
+        raise ValueError(f"start_frame debe ser >= 0; se recibió {start_frame}")
+    if frame_step < 1:
+        raise ValueError(f"frame_step debe ser >= 1; se recibió {frame_step}")
+
     abs_path = _resolve_video_path(video_path)
     reader = decord.VideoReader(str(abs_path))
     total = len(reader)
-    n = total if max_frames is None else min(int(max_frames), total)
-    for i in range(n):
+    yielded = 0
+    for i in range(int(start_frame), total, int(frame_step)):
+        if max_frames is not None and yielded >= int(max_frames):
+            break
         yield i, reader[i].asnumpy()  # (H, W, 3) RGB (bridge nativo)
+        yielded += 1
 
 
 def get_video_fps(video_path: Path) -> float:
