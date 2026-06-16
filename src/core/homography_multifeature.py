@@ -54,18 +54,21 @@ def field_white_lines(img_bgr: np.ndarray, carpet_mask: np.ndarray,
 
 
 def _template_perimeter_cm(step: float = 4.0) -> np.ndarray:
-    """Puntos (cm) densos del rectángulo interior + línea central, para medir overlap."""
+    """Puntos (cm) densos del rectángulo interior para medir overlap.
+
+    Solo el rectángulo de borde (NO la línea central): el campo apenas marca la línea
+    central, así que incluirla solo metía ruido a la métrica (y al overlay).
+    """
     from src.core import field_landmarks as fl
     tl = fl.LANDMARK_POINTS["inner_tl"]; tr = fl.LANDMARK_POINTS["inner_tr"]
     br = fl.LANDMARK_POINTS["inner_br"]; bl = fl.LANDMARK_POINTS["inner_bl"]
-    ct = fl.LANDMARK_POINTS["center_top"]; cb = fl.LANDMARK_POINTS["center_bot"]
 
     def seg(a, b):
         n = max(2, int(np.hypot(b[0] - a[0], b[1] - a[1]) / step))
         t = np.linspace(0, 1, n)[:, None]
         return np.array(a) * (1 - t) + np.array(b) * t
 
-    return np.vstack([seg(tl, tr), seg(tr, br), seg(br, bl), seg(bl, tl), seg(ct, cb)])
+    return np.vstack([seg(tl, tr), seg(tr, br), seg(br, bl), seg(bl, tl)])
 
 
 _PERIM_CM = None
