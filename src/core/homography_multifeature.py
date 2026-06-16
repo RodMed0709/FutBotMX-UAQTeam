@@ -15,7 +15,85 @@ from __future__ import annotations
 
 import numpy as np
 
-from src.core.auto_homography import carpet_and_white
+from src.core.auto_homography import _fit_line_robust, carpet_and_white
+
+
+def inner_corners_extrapolated(
+    white: np.ndarray,
+    frac: float = 0.80,
+    min_side_px: int = 15,
+    max_oob_frac: float = 1.5,
+):
+    """4 esquinas del rectangulo interior, tolerando esquinas OCLUIDAS/cortadas.
+
+    Igual que ``auto_homography.inner_corners`` (clasifica blancos en 4 lados con los
+    ejes del ``minAreaRect``, ajusta una recta robusta por lado e intersecta lados
+    adyacentes), PERO **no rechaza** una esquina por caer fuera del frame: si la
+    esquina superior-derecha esta comida/recortada, las rectas del lado superior y
+    derecho se ajustan con sus pixeles visibles y se **extrapolan** hasta cruzarse,
+    recuperando la esquina "virtual". El mapa no se rompe porque la linea blanca
+    sigue su recta aunque el vertice no se vea.
+
+    Args:
+        white: mascara binaria de lineas blancas (dentro de la alfombra).
+        frac: umbral (fraccion del semieje) para clasificar un pixel como de borde.
+        min_side_px: minimo de pixeles por lado para ajustar su recta.
+        max_oob_frac: cuanto puede salirse una esquina del frame, como fraccion del
+            tamano del frame (1.5 = hasta 1.5x fuera). Filtra intersecciones absurdas
+            (lados casi paralelos) sin exigir que la esquina sea visible.
+
+    Returns:
+        ``np.ndarray (4,2) float32`` con winding consistente, o ``None`` si no se
+        pueden ajustar los 4 lados.
+    """
+    import cv2
+
+    ys, xs = np.where(white)
+    if len(xs) < 4 * min_side_px:
+        return None
+    H, W = white.shape
+    pts = np.column_stack([xs, ys]).astype(np.float32)
+    box = cv2.boxPoints(cv2.minAreaRect(pts))
+    center = box.mean(0)
+    e0, e1 = box[1] - box[0], box[2] - box[1]
+    n0, n1 = float(np.linalg.norm(e0)), float(np.linalg.norm(e1))
+    if n0 < 1 or n1 < 1:
+        return None
+    if n0 >= n1:
+        u, half_u, v, half_v = e0 / n0, n0 / 2, e1 / n1, n1 / 2
+    else:
+        u, half_u, v, half_v = e1 / n1, n1 / 2, e0 / n0, n0 / 2
+    du = (pts - center) @ u
+    dv = (pts - center) @ v
+    qu, qv = half_u * frac, half_v * frac
+    sides = {"u-": pts[du < -qu], "u+": pts[du > qu],
+             "v-": pts[dv < -qv], "v+": pts[dv > qv]}
+    lines = {}
+    for k, p in sides.items():
+        if len(p) < min_side_px:
+            return None
+        lines[k] = _fit_line_robust(p)
+
+    def inter(a, b):
+        (p, d), (q, e) = lines[a], lines[b]
+        A = np.array([[d[0], -e[0]], [d[1], -e[1]]])
+        if abs(np.linalg.det(A)) < 0.2:  # lados casi paralelos -> degenerado
+            return None
+        t = np.linalg.solve(A, q - p)
+        return p + t[0] * d
+
+    cs = [inter("u-", "v-"), inter("u+", "v-"), inter("u+", "v+"), inter("u-", "v+")]
+    if any(c is None for c in cs):
+        return None
+    q = np.array(cs, np.float32)
+    # Permitir esquinas FUERA del frame (ocluidas/cortadas), pero no absurdas.
+    lo = np.array([-max_oob_frac * W, -max_oob_frac * H])
+    hi = np.array([(1 + max_oob_frac) * W, (1 + max_oob_frac) * H])
+    if np.any(q < lo) or np.any(q > hi):
+        return None
+    c = q.mean(0)
+    a = np.arctan2(q[:, 1] - c[1], q[:, 0] - c[0])
+    return q[np.argsort(a)]
 
 
 def _remove_long_lines(white: np.ndarray, min_len_frac: float = 0.16, thick: int = 9) -> np.ndarray:
