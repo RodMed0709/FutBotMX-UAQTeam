@@ -53,6 +53,134 @@ def field_white_lines(img_bgr: np.ndarray, carpet_mask: np.ndarray,
     return white
 
 
+def _template_perimeter_cm(step: float = 4.0) -> np.ndarray:
+    """Puntos (cm) densos del rectángulo interior + línea central, para medir overlap."""
+    from src.core import field_landmarks as fl
+    tl = fl.LANDMARK_POINTS["inner_tl"]; tr = fl.LANDMARK_POINTS["inner_tr"]
+    br = fl.LANDMARK_POINTS["inner_br"]; bl = fl.LANDMARK_POINTS["inner_bl"]
+    ct = fl.LANDMARK_POINTS["center_top"]; cb = fl.LANDMARK_POINTS["center_bot"]
+
+    def seg(a, b):
+        n = max(2, int(np.hypot(b[0] - a[0], b[1] - a[1]) / step))
+        t = np.linspace(0, 1, n)[:, None]
+        return np.array(a) * (1 - t) + np.array(b) * t
+
+    return np.vstack([seg(tl, tr), seg(tr, br), seg(br, bl), seg(bl, tl), seg(ct, cb)])
+
+
+_PERIM_CM = None
+
+
+def registration_overlap(white: np.ndarray, H: np.ndarray, band: int = 7) -> float:
+    """Overlap global del template proyectado (rectángulo+central) sobre la blanca."""
+    import cv2
+    global _PERIM_CM
+    if _PERIM_CM is None:
+        _PERIM_CM = _template_perimeter_cm()
+    try:
+        Hinv = np.linalg.inv(H)
+    except np.linalg.LinAlgError:
+        return 0.0
+    pts = cv2.perspectiveTransform(_PERIM_CM.reshape(-1, 1, 2).astype(np.float64), Hinv).reshape(-1, 2)
+    return line_overlap_score(white, pts, band=band)
+
+
+def solve_lines_masks(img_bgr, carpet_mask, yc=None, bc=None):
+    """Homografía imagen->cm por ajuste de líneas blancas, orientada y con overlap.
+
+    1. ``field_white_lines`` (blanco dentro del verde de SAM3).
+    2. ``inner_corners_extrapolated`` (4 esquinas, tolera oclusión/fuera de frame).
+    3. prueba las 4 rotaciones del etiquetado contra el template, elige la **orientación
+       válida** (amarillo a la izquierda x<centro, azul a la derecha) de **mayor overlap**.
+
+    Returns:
+        dict ``{H, corners, overlap, white, ok}``. ``ok=False`` si no se pudo ajustar.
+    """
+    import cv2
+    from src.core import field_landmarks as fl
+
+    white = field_white_lines(img_bgr, carpet_mask)
+    corners = inner_corners_extrapolated(white)
+    res = {"H": None, "corners": None, "overlap": 0.0, "white": white, "ok": False}
+    if corners is None:
+        return res
+
+    inner = np.array([fl.LANDMARK_POINTS[n] for n in
+                      ["inner_tl", "inner_tr", "inner_br", "inner_bl"]], np.float64)
+    cx = fl.CENTER_CIRCLE[0]
+    best = None
+    for r in range(4):
+        tgt = np.roll(inner, -r, axis=0)
+        H, _ = cv2.findHomography(corners.astype(np.float64), tgt, 0)
+        if H is None:
+            continue
+        # orientación: amarillo debe caer a la izquierda (x<cx), azul a la derecha
+        ok_orient = True
+        if yc is not None:
+            yx = cv2.perspectiveTransform(np.array([[yc]], np.float64), H)[0, 0, 0]
+            ok_orient = ok_orient and (yx < cx)
+        if bc is not None:
+            bx = cv2.perspectiveTransform(np.array([[bc]], np.float64), H)[0, 0, 0]
+            ok_orient = ok_orient and (bx > cx)
+        if yc is None and bc is None:
+            ok_orient = True
+        if not ok_orient:
+            continue
+        ov = registration_overlap(white, H)
+        if best is None or ov > best[2]:
+            best = (H, np.roll([0, 1, 2, 3], -r), ov)
+    if best is None:
+        return res
+    res.update({"H": best[0], "corners": corners, "overlap": best[2], "ok": True})
+    return res
+
+
+class VideoHomographyLines:
+    """Homografía por video: re-ajuste por líneas cada frame, EMA + gate de overlap.
+
+    Resuelve la queja de Rodrigo (líneas chuecas que se quedan fijas): **cada frame**
+    re-ajusta contra la línea blanca real (dinámico, sigue a la cámara), pero solo
+    **acepta** el ajuste si su ``overlap`` con la blanca supera ``min_overlap`` (nunca
+    fija algo torcido). Suaviza con EMA para que no tiemble. Si el frame ajusta mal,
+    **conserva la última H buena** (no congela una mala).
+
+    Args:
+        min_overlap: overlap mínimo del template proyectado sobre la blanca para aceptar.
+        smooth_beta: peso del histórico en la EMA (0=salta al nuevo, 1=ignora el nuevo).
+            Bajo = más dinámico/responsivo a la cámara.
+    """
+
+    def __init__(self, min_overlap: float = 0.40, smooth_beta: float = 0.4):
+        self.min_overlap = min_overlap
+        self.smooth_beta = smooth_beta
+        self.H: np.ndarray | None = None
+        self.overlap = 0.0
+        self.n_fit = 0
+        self.n_kept = 0
+        self.n_none = 0
+
+    def update(self, img_bgr, carpet_mask, yc=None, bc=None):
+        """Procesa un frame -> ``(H, status, overlap)``; status in {fit, kept, none}."""
+        r = solve_lines_masks(img_bgr, carpet_mask, yc, bc)
+        if r["ok"] and r["overlap"] >= self.min_overlap:
+            Hn = r["H"] / r["H"][2, 2]
+            if self.H is None:
+                self.H = Hn
+            else:
+                self.H = (1 - self.smooth_beta) * Hn + self.smooth_beta * self.H
+            self.overlap = r["overlap"]
+            self.n_fit += 1
+            return self.H, "fit", r["overlap"]
+        if self.H is not None:
+            self.n_kept += 1
+            return self.H, "kept", r["overlap"]
+        self.n_none += 1
+        return None, "none", r["overlap"]
+
+    def stats(self) -> dict:
+        return {"fit": self.n_fit, "kept": self.n_kept, "none": self.n_none}
+
+
 def line_overlap_score(white: np.ndarray, projected_pts: np.ndarray, band: int = 6) -> float:
     """Fracción de puntos proyectados (de una línea del template) que caen sobre blanco.
 
