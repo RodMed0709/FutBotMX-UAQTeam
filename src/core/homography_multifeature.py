@@ -18,6 +18,61 @@ import numpy as np
 from src.core.auto_homography import _fit_line_robust, carpet_and_white
 
 
+def field_white_lines(img_bgr: np.ndarray, carpet_mask: np.ndarray,
+                      close_ksize: int = 25, white_v_min: int = 140,
+                      white_s_max: int = 90) -> np.ndarray:
+    """Líneas blancas del campo a partir de la máscara verde de SAM3 (idea Rodrigo).
+
+    SAM3 segmenta MUY bien la alfombra ``green_floor`` y **excluye** las líneas
+    blancas: cada línea es un *hueco* (no-verde) **rodeado de verde** (la alfombra se
+    extiende a ambos lados de la línea: borde a 12 cm de la pared, centro/áreas dentro).
+    Entonces:
+
+    1. ``filled`` = cierre morfológico de la máscara verde → tapa los huecos de línea.
+    2. ``gaps`` = ``filled - verde`` → las líneas blancas (+ robots/objetos internos).
+    3. se queda solo con lo **blanquecino** (alto valor, baja saturación) → descarta
+       robots oscuros, deja las líneas.
+
+    Devuelve máscara binaria ``uint8`` de líneas blancas, limpia y lista para ajustar
+    rectas / medir overlap.
+    """
+    import cv2
+
+    g = (carpet_mask > 0).astype(np.uint8) * 255
+    k = np.ones((close_ksize, close_ksize), np.uint8)
+    filled = cv2.morphologyEx(g, cv2.MORPH_CLOSE, k)
+    gaps = cv2.subtract(filled, g)                      # huecos internos = líneas + objetos
+    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+    whiteish = cv2.inRange(hsv, (0, 0, white_v_min), (180, white_s_max, 255))
+    white = cv2.bitwise_and(gaps, whiteish)
+    # adelgaza ruido y reconecta segmentos de línea
+    white = cv2.morphologyEx(white, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    white = cv2.morphologyEx(white, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    return white
+
+
+def line_overlap_score(white: np.ndarray, projected_pts: np.ndarray, band: int = 6) -> float:
+    """Fracción de puntos proyectados (de una línea del template) que caen sobre blanco.
+
+    Mide qué tan bien una línea proyectada **OVERLAPa** la línea blanca real (criterio
+    de calidad pedido por Rodrigo). ``projected_pts`` ``(N,2)`` en px imagen; ``band``
+    dilata la máscara blanca para tolerar grosor/ruido. 1.0 = encaje perfecto.
+    """
+    import cv2
+
+    H, W = white.shape
+    wd = cv2.dilate(white, np.ones((band, band), np.uint8))
+    pts = np.round(projected_pts).astype(int)
+    ok = 0
+    tot = 0
+    for x, y in pts:
+        if 0 <= x < W and 0 <= y < H:
+            tot += 1
+            if wd[y, x] > 0:
+                ok += 1
+    return (ok / tot) if tot else 0.0
+
+
 def inner_corners_extrapolated(
     white: np.ndarray,
     frac: float = 0.80,
