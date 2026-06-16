@@ -13,6 +13,7 @@ import statistics
 import sys
 from pathlib import Path
 
+from src.core.events_schema import events_paths
 from src.core.metric_kinematics import (
     KinematicsResult,
     compute_kinematics,
@@ -108,9 +109,9 @@ def main() -> None:
     _edge_cases()
 
     stem = tracks.stem
-    _plot(result, PROJECT_ROOT / "outputs" / f"metric_speed_distance_{stem}.png")
+    _plot(result, events_paths(stem, "metric_speed_distance", "png"))
     out = write_kinematics_json(
-        result, PROJECT_ROOT / "outputs" / f"metric_speed_distance_{stem}.json"
+        result, events_paths(stem, "metric_speed_distance", "json")
     )
     print("escrito:", out)
     print("OK")

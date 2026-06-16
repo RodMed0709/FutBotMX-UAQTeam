@@ -10,6 +10,7 @@ import json
 import sys
 from pathlib import Path
 
+from src.core.events_schema import events_paths
 from src.core.metric_field_zones import (
     compute_field_zones,
     write_field_zones_json,
@@ -63,11 +64,11 @@ def main() -> None:
     stem = tracks.stem
     for esquema in result.por_esquema:
         out = write_zones_png(
-            result, esquema, PROJECT_ROOT / "outputs" / f"field_zones_{esquema}_{stem}.png"
+            result, esquema, events_paths(stem, f"field_zones_{esquema}", "png")
         )
         print(f"zonas {esquema}:", out)
     out_json = write_field_zones_json(
-        result, PROJECT_ROOT / "outputs" / f"field_zones_{stem}.json"
+        result, events_paths(stem, "field_zones", "json")
     )
     print("escrito:", out_json)
     print("OK")

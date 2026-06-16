@@ -23,6 +23,7 @@ from src.core import field_template as ft
 from src.core.event_goal_geometric import compute_geometric_goals
 from src.core.events import compute_possession
 from src.core.events_core import BALL_CLASSES, load_frame_objects
+from src.core.events_schema import events_paths
 from src.core.frame_extraction import get_video_fps
 from src.core.metric_field_zones import compute_field_zones
 from src.core.metric_heatmap import render_heatmap
@@ -181,7 +182,7 @@ def compose_demo(
     grid, pos_by_frame = _live_heatmap_state(metric, HEATMAP_BIN_CM)
 
     caps = [cv2.VideoCapture(str(p.path)) for p in panels]
-    out = Path(output_path) if output_path else tracks_json.parent / f"{tracks_json.stem}_demo.mp4"
+    out = Path(output_path) if output_path else events_paths(tracks_json.stem, "demo", "mp4")
     n = 0
     try:
         with open_video_writer(out, fps=fps) as append:

@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from src.core import field_template as ft
+from src.core.events_schema import events_paths
 from src.core.metric_positions import (
     compute_metric_positions,
     write_metric_positions_json,
@@ -96,9 +97,9 @@ def main() -> None:
     _edge_cases()
 
     stem = tracks.stem
-    _plot_trajectories(result, PROJECT_ROOT / "outputs" / f"metric_positions_{stem}.png")
+    _plot_trajectories(result, events_paths(stem, "metric_positions", "png"))
     out_json = write_metric_positions_json(
-        result, PROJECT_ROOT / "outputs" / f"metric_positions_{stem}.json"
+        result, events_paths(stem, "metric_positions", "json")
     )
     print("escrito:", out_json)
     print("OK")

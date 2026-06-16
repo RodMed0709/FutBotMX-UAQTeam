@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 
 from src.core import field_template as ft
+from src.core.events_schema import events_paths
 from src.core.metric_heatmap import compute_heatmaps, write_heatmap_png
 from src.utils import PROJECT_ROOT
 
@@ -59,7 +60,7 @@ def main() -> None:
     stem = tracks.stem
     for cat, g in result.grids.items():
         out = write_heatmap_png(
-            g, result.bin_cm, PROJECT_ROOT / "outputs" / f"heatmap_{cat}_{stem}.png"
+            g, result.bin_cm, events_paths(stem, f"heatmap_{cat}", "png")
         )
         print(f"heatmap {cat}:", out)
     print("OK")

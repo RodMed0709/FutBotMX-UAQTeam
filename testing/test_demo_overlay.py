@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from src.core.demo_overlay import compose_demo
+from src.core.events_schema import events_paths
 from src.utils import PROJECT_ROOT
 
 DEFAULT_TRACKS = (
@@ -39,8 +40,8 @@ def main() -> None:
     if not tracks.exists():
         raise FileNotFoundError(f"No hay JSON de tracking: {tracks}")
 
-    out = PROJECT_ROOT / "outputs" / f"demo_{tracks.stem}.mp4"
-    mp4 = compose_demo(tracks, output_path=out, max_seconds=120.0)
+    # Sin output_path: compose_demo deriva el default vía events_paths.
+    mp4 = compose_demo(tracks, max_seconds=120.0)
 
     # --- invariantes ---
     assert mp4.exists() and mp4.stat().st_size > 0, "el demo no se escribió"
@@ -55,7 +56,7 @@ def main() -> None:
     print(f"demo: {n} frames @ {fps:.2f}fps = {n / fps:.1f}s")
     print("invariantes OK")
 
-    _sample_png(mp4, PROJECT_ROOT / "outputs" / f"demo_{tracks.stem}_sample.png")
+    _sample_png(mp4, events_paths(tracks.stem, "demo_sample", "png"))
     print("OK")
 
 

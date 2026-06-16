@@ -18,6 +18,7 @@ from src.core.event_goal_geometric import (
     compute_geometric_goals,
     write_geometric_goals_json,
 )
+from src.core.events_schema import events_paths
 from src.utils import PROJECT_ROOT
 
 DEFAULT_TRACKS = (
@@ -101,9 +102,9 @@ def main() -> None:
     _edge_cases()
 
     stem = tracks.stem
-    _plot(result, PROJECT_ROOT / "outputs" / f"goal_geometric_{stem}.png")
+    _plot(result, events_paths(stem, "goal_geometric", "png"))
     out = write_geometric_goals_json(
-        result, PROJECT_ROOT / "outputs" / f"goal_geometric_{stem}.json"
+        result, events_paths(stem, "goal_geometric", "json")
     )
     print("escrito:", out)
     print("OK")

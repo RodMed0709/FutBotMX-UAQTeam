@@ -13,7 +13,7 @@ from test_event_possession import resolve_tracks  # harness reusable de T1 (mism
 
 from src.core.event_goals import compute_goal_zone_events, write_goal_events_json
 from src.core.events_core import FrameObject, load_frame_objects
-from src.utils import PROJECT_ROOT
+from src.core.events_schema import events_paths
 
 _COLORS = {"yellow": "#d4b106", "blue": "#1f77b4"}
 
@@ -84,9 +84,9 @@ def main() -> None:
     _edge_cases()
 
     stem = tracks.stem
-    _plot_timeline(result, PROJECT_ROOT / "outputs" / f"event_goal_zone_{stem}.png")
+    _plot_timeline(result, events_paths(stem, "goal_zone", "png"))
     out_json = write_goal_events_json(
-        result, PROJECT_ROOT / "outputs" / f"event_goal_zone_{stem}.json"
+        result, events_paths(stem, "goal_zone", "json")
     )
     print("escrito:", out_json)
     print("OK")
