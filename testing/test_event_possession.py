@@ -1,12 +1,23 @@
-"""Smoke manual de ``event_possession`` (fase_5, Capa A). Corre en LOCAL sin GPU.
+"""Harness de análisis de eventos sobre un clip (fase_5). Reutilizable por las tareas
+de eventos posteriores.
 
-Sobre un JSON de tracking ya existente: calcula la posesión, valida invariantes, ejerce
-casos borde y genera una **línea de tiempo** de posesión (matplotlib → png).
+Analiza la posesión sobre un **JSON de tracking**. Dos modos:
 
-    python testing/test_event_possession.py
+    # 1) Analizar un JSON existente (CPU local, sin GPU)
+    python testing/test_event_possession.py [ruta/al/tracks.json]
+
+    # 2) Generar el tracking de un clip de CLIP_SECONDS y analizarlo (POD/GPU)
+    python testing/test_event_possession.py --video data/raw/.../IMG_9933.MOV
+
+El análisis consume un JSON, así que para un clip de ~35 s hace falta un JSON de ~35 s:
+el modo (2) lo genera con `run_inference(mode="tracking", max_frames=35*fps)`.
+(Generar arranca en el frame 0: `track_video` aún no expone `start_frame` — pendiente de
+la tarea `frame_window_sampling`.)
 """
 
 import json
+import sys
+from pathlib import Path
 
 from src.core.events import (
     FrameObject,
@@ -16,7 +27,35 @@ from src.core.events import (
 )
 from src.utils import PROJECT_ROOT
 
-TRACKS = PROJECT_ROOT / "outputs/inference/fase3_eventos/IMG_9780/IMG_9780.json"
+# --- Configuración del clip ---
+CLIP_SECONDS = 35  # duración objetivo del clip a analizar (300 frames ≈ 10 s no alcanzaba)
+DEFAULT_TRACKS = PROJECT_ROOT / "outputs/inference/fase3_eventos/IMG_9780/IMG_9780.json"
+GEN_DETECTOR, GEN_TRACKER = "yolo_sam3", "bytetrack"  # para el modo --video (pod)
+
+
+def generate_tracks(video: str, seconds: int) -> Path:
+    """Genera un JSON de tracking del clip (primeros `seconds`) vía run_inference. POD/GPU."""
+    from src.core.frame_extraction import get_video_fps
+    from src.core.inference import run_inference
+
+    fps = get_video_fps(Path(video))
+    max_frames = round(seconds * fps)
+    print(f"[gen] tracking {seconds}s = {max_frames} frames ({GEN_DETECTOR}+{GEN_TRACKER})…")
+    res = run_inference(
+        video, mode="tracking", detector=GEN_DETECTOR, tracker=GEN_TRACKER,
+        max_frames=max_frames, render_video=False, run_label="fase5_eventos",
+    )
+    return Path(res["json"])
+
+
+def resolve_tracks() -> Path:
+    """Resuelve el JSON a analizar según los argumentos."""
+    args = sys.argv[1:]
+    if "--video" in args:
+        return generate_tracks(args[args.index("--video") + 1], CLIP_SECONDS)
+    if args:
+        return Path(args[0])
+    return DEFAULT_TRACKS
 
 
 def _plot_timeline(result, png_path, fps) -> None:
@@ -44,12 +83,38 @@ def _plot_timeline(result, png_path, fps) -> None:
     print("timeline:", png_path)
 
 
+def _edge_cases(fps) -> None:
+    assert compute_possession({}, fps=fps).resumen["n_frames"] == 0  # vacío
+    sin_robot = {0: [FrameObject(9, "orange_ball", (10, 10, 4, 4), (12, 12), 0.9)]}
+    assert compute_possession(sin_robot, min_frames=1).por_frame[0] is None
+    sin_balon = {0: [FrameObject(0, "robot", (0, 0, 50, 50), (25, 25), 0.9)]}
+    assert compute_possession(sin_balon, min_frames=1).por_frame[0] is None
+    pegado = {
+        0: [
+            FrameObject(7, "robot", (0, 0, 50, 50), (25, 25), 0.9),
+            FrameObject(9, "orange_ball", (24, 24, 4, 4), (25, 25), 0.9),
+        ]
+    }
+    assert compute_possession(pegado, min_frames=1).por_frame[0] == 7
+    print("casos borde OK")
+
+
 def main() -> None:
-    if not TRACKS.exists():
-        raise FileNotFoundError(f"No hay JSON de tracking de prueba: {TRACKS}")
-    fps = json.loads(TRACKS.read_text(encoding="utf-8")).get("fps")
-    by_frame = load_frame_objects(TRACKS)
-    print(f"frames={len(by_frame)} fps={fps}")
+    tracks = resolve_tracks()
+    if not tracks.exists():
+        raise FileNotFoundError(f"No hay JSON de tracking: {tracks}")
+
+    meta = json.loads(tracks.read_text(encoding="utf-8"))
+    fps = meta.get("fps")
+    by_frame = load_frame_objects(tracks)
+    n = meta.get("num_frames") or len(by_frame)
+    dur = (n / fps) if fps else 0.0
+    print(f"video: {meta.get('video')}")
+    print(f"json:  {tracks}")
+    print(f"frames={n} fps={fps} duración={dur:.1f}s")
+    if dur + 0.5 < CLIP_SECONDS:
+        print(f"AVISO: el clip dura {dur:.1f}s (< objetivo {CLIP_SECONDS}s). "
+              f"Para uno más largo: --video <ruta> (genera tracking en el pod).")
 
     result = compute_possession(by_frame, fps=fps)
     print("resumen:\n" + json.dumps(result.resumen, indent=2, ensure_ascii=False))
@@ -62,26 +127,13 @@ def main() -> None:
     assert sum(o["frames"] for o in r["posesion_por_obj"].values()) == n_owned
     print("invariantes OK")
 
-    # --- casos borde ---
-    assert compute_possession({}, fps=fps).resumen["n_frames"] == 0  # vacío
-    # frame con balón pero sin robots -> None; frame sin balón -> None
-    sin_robot = {0: [FrameObject(9, "orange_ball", (10, 10, 4, 4), (12, 12), 0.9)]}
-    assert compute_possession(sin_robot, min_frames=1).por_frame[0] is None
-    sin_balon = {0: [FrameObject(0, "robot", (0, 0, 50, 50), (25, 25), 0.9)]}
-    assert compute_possession(sin_balon, min_frames=1).por_frame[0] is None
-    # robot pegado al balón (dist 0 < gate) -> lo posee
-    pegado = {
-        0: [
-            FrameObject(7, "robot", (0, 0, 50, 50), (25, 25), 0.9),
-            FrameObject(9, "orange_ball", (24, 24, 4, 4), (25, 25), 0.9),
-        ]
-    }
-    assert compute_possession(pegado, min_frames=1).por_frame[0] == 7
-    print("casos borde OK")
+    _edge_cases(fps)
 
-    # --- visualización de validación ---
-    _plot_timeline(result, PROJECT_ROOT / "outputs" / "event_possession_timeline.png", fps)
-    out_json = write_possession_json(result, PROJECT_ROOT / "outputs" / "event_possession.json")
+    stem = tracks.stem
+    _plot_timeline(result, PROJECT_ROOT / "outputs" / f"event_possession_{stem}.png", fps)
+    out_json = write_possession_json(
+        result, PROJECT_ROOT / "outputs" / f"event_possession_{stem}.json"
+    )
     print("escrito:", out_json)
     print("OK")
 
