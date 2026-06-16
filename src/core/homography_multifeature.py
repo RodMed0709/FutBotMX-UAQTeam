@@ -38,14 +38,16 @@ def field_white_lines(img_bgr: np.ndarray, carpet_mask: np.ndarray,
     """
     import cv2
 
+    # SAM3 incluye las líneas DENTRO del green_floor (el piso es un objeto con sus
+    # marcas), así que las líneas NO son huecos: se extraen por color (blanquecino)
+    # dentro de la región del campo. Se cierra la máscara verde para abarcar la franja
+    # de líneas y el borde, y se intersecta con píxeles de alta luminancia/baja sat.
     g = (carpet_mask > 0).astype(np.uint8) * 255
-    k = np.ones((close_ksize, close_ksize), np.uint8)
-    filled = cv2.morphologyEx(g, cv2.MORPH_CLOSE, k)
-    gaps = cv2.subtract(filled, g)                      # huecos internos = líneas + objetos
+    field = cv2.morphologyEx(g, cv2.MORPH_CLOSE, np.ones((close_ksize, close_ksize), np.uint8))
+    field = cv2.dilate(field, np.ones((7, 7), np.uint8))   # alcanza la línea de borde
     hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
     whiteish = cv2.inRange(hsv, (0, 0, white_v_min), (180, white_s_max, 255))
-    white = cv2.bitwise_and(gaps, whiteish)
-    # adelgaza ruido y reconecta segmentos de línea
+    white = cv2.bitwise_and(whiteish, field)
     white = cv2.morphologyEx(white, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
     white = cv2.morphologyEx(white, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
     return white
