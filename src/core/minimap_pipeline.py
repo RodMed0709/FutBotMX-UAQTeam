@@ -33,15 +33,18 @@ from pathlib import Path
 import numpy as np
 
 from src.core.auto_homography import VideoHomography  # camino C
-from src.core.detectors import get_detector
+from src.core.detectors import detect_boxes, get_detector
 from src.core.frame_extraction import get_frame_count, get_video_fps, iter_frames
 from src.core.homography import mask_centroid, project_points
 from src.core.inference_schema import mask_to_bbox_centroid
 from src.core.minimap import MinimapRenderer, draw_field_overlay
 from src.core.sam3_loader import Sam3Bundle, load_sam3
-from src.core.segmentation import _load_classes
+from src.core.segmentation import _load_classes, segment_with_text
 from src.core.video_writer import open_video_writer
 from src.utils import PROJECT_ROOT
+
+# Detectores de anclas/objetos validos para el minimap.
+_DETECTORS = ("sam3_text", "yolo_sam3", "yolo")
 
 FIELD_CLASS = "green_floor"
 YELLOW_CLASS = "yellow_zone"
@@ -144,6 +147,33 @@ def _objects_from_dets(dets_by_class: dict) -> list[tuple[str, tuple[float, floa
     return out
 
 
+def _foot_from_xyxy(class_name: str, bbox) -> tuple[float, float]:
+    """Foot-point desde una caja YOLO ``(x1, y1, x2, y2)``: centro-inferior (robot) o
+    centro (balon). Espeja el calculo de ``pod_minimap_sam3``."""
+    x1, y1, x2, y2 = bbox
+    cx = (x1 + x2) / 2.0
+    if class_name in BALL_CLASSES:
+        return (cx, (y1 + y2) / 2.0)
+    return (cx, y2)
+
+
+def _box_centroid(boxes: list) -> tuple[float, float] | None:
+    """Centroide de la primera caja YOLO (``BoxDetection`` xyxy) o ``None`` si no hay."""
+    if not boxes:
+        return None
+    x1, y1, x2, y2 = boxes[0].bbox
+    return ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+
+
+def _objects_from_boxes(boxes_by_class: dict) -> list[tuple[str, tuple[float, float]]]:
+    """Robots y balon de un dict ``{clase: [BoxDetection]}`` -> lista ``(class, foot_xy)``."""
+    out: list[tuple[str, tuple[float, float]]] = []
+    for cls in (ROBOT_CLASS, BALL_CLASS):
+        for bd in boxes_by_class.get(cls, []):
+            out.append((cls, _foot_from_xyxy(cls, bd.bbox)))
+    return out
+
+
 def _load_tracks_from_json(tracks_json: Path) -> tuple[dict[int, list], int]:
     """Indexa un JSON de tracking por frame.
 
@@ -192,13 +222,16 @@ def render_minimap_video(
         video_path: ruta del video (relativa a PROJECT_ROOT o absoluta).
         tracks_json: JSON de tracking ya generado (robots/balon). Si es ``None``,
             se detectan y siguen los objetos en el mismo paso (autocontenido).
-        detector: pipeline de segmentacion para anclas (y objetos si no hay
-            ``tracks_json``): ``"sam3_text"`` (SAM3 por texto) o ``"yolo_sam3"`` (YOLO
-            localiza objetos/porterias + ``green_floor`` por SAM3-texto; reproduce
-            ``pod_minimap_sam3``). Permite comparar la homografia entre ambos pipelines.
-        conf: umbral de confianza de YOLO (solo aplica con ``detector="yolo_sam3"``;
-            ignorado con ``sam3_text``). ``None`` ⇒ el de la config. Bajalo (p. ej.
-            ``0.25``) para detectar mas objetos/porterias, como la demo.
+        detector: fuente de anclas/objetos (objetos solo si no hay ``tracks_json``):
+            ``"sam3_text"`` (todo por SAM3-texto; la azul suele faltar),
+            ``"yolo_sam3"`` (YOLO→SAM3 box-prompt: máscaras finas, más lento; útil para
+            análisis posterior), o ``"yolo"`` (cajas YOLO + ``green_floor`` por
+            SAM3-texto: **1 SAM3/frame, rápido**, reproduce ``pod_minimap_sam3``). Para el
+            minimap, ``"yolo"`` da el mismo resultado que ``"yolo_sam3"`` mucho más rápido
+            (el minimap solo usa cajas, no las máscaras de objetos).
+        conf: umbral de confianza de YOLO (aplica con ``yolo_sam3``/``yolo``; ignorado con
+            ``sam3_text``). ``None`` ⇒ el de la config. Bájalo (p. ej. ``0.25``) para
+            detectar más objetos/porterías, como la demo.
         output_path: ruta del mp4 de salida. Si es ``None`` se escribe en
             ``notebooks/fase_4_homografia/outputs/<stem>_minimap.mp4``.
         max_frames: tope de **frames procesados** (cantidad). Con ``tracks_json`` y sin
@@ -224,9 +257,9 @@ def render_minimap_video(
     video_path = Path(video_path)
     classes = _load_classes()
     bundle = bundle or load_sam3()
-    detect = get_detector(detector)
-    # `conf` solo lo entiende el detector YOLO; con sam3_text se ignora.
-    detect_kwargs = {"conf": conf} if (conf is not None and detector == "yolo_sam3") else {}
+    if detector not in _DETECTORS:
+        raise ValueError(f"detector '{detector}' no soportado (usa uno de {_DETECTORS}).")
+    use_yolo_boxes = detector == "yolo"
 
     frame_to_objs = None
     tracker = None
@@ -245,6 +278,17 @@ def render_minimap_video(
     if tracks_json is None:
         wanted |= {ROBOT_CLASS, BALL_CLASS}
     needed_classes = [c for c in classes if c["name"] in wanted]
+
+    # Preparación según el modo de detección.
+    if use_yolo_boxes:
+        # Camino rápido (= pod_minimap_sam3): cajas YOLO para objetos/porterías +
+        # green_floor por SAM3-texto. 1 SAM3/frame (el minimap no usa máscaras de objetos).
+        green_prompt = next(c["sam3_prompts"][0] for c in classes if c["name"] == FIELD_CLASS)
+        yolo_classes = [c for c in needed_classes if "yolo_id" in c]  # excluye green_floor
+    else:
+        detect = get_detector(detector)
+        # `conf` solo lo entiende el detector YOLO; con sam3_text se ignora.
+        detect_kwargs = {"conf": conf} if (conf is not None and detector == "yolo_sam3") else {}
 
     # El video de salida corre a fps/frame_step para conservar la velocidad real:
     # con frame_step=2 se escribe 1 de cada 2 frames (como la demo con every=2), así
@@ -276,35 +320,40 @@ def render_minimap_video(
         ):
             n_frames += 1
 
-            # Una sola llamada al detector pluggable devuelve todas las clases pedidas
-            # (anclas + objetos). Con yolo_sam3 esto es 1 YOLO + box-prompts + green texto.
-            dets = detect(frame, classes=needed_classes, bundle=bundle, **detect_kwargs)
-            field_mask = _largest_mask(dets.get(FIELD_CLASS, []))
+            # Detección por frame. El minimap solo usa la MÁSCARA de la alfombra; para
+            # porterías y objetos basta con sus cajas (centroide / foot-point).
+            if use_yolo_boxes:
+                # Rápido (= pod_minimap_sam3): cajas YOLO + green_floor por SAM3-texto.
+                boxes = detect_boxes(frame, classes=yolo_classes, conf=conf)
+                field_mask = _largest_mask(segment_with_text(frame, green_prompt, bundle))
+                yc = _box_centroid(boxes.get(YELLOW_CLASS, []))
+                bc = _box_centroid(boxes.get(BLUE_CLASS, []))
+                objs_raw = _objects_from_boxes(boxes)
+            else:
+                # Detector pluggable con máscaras: sam3_text | yolo_sam3 (1 llamada).
+                dets = detect(frame, classes=needed_classes, bundle=bundle, **detect_kwargs)
+                field_mask = _largest_mask(dets.get(FIELD_CLASS, []))
+                yc = mask_centroid(_largest_mask(dets.get(YELLOW_CLASS, [])))
+                bc = mask_centroid(_largest_mask(dets.get(BLUE_CLASS, [])))
+                objs_raw = _objects_from_dets(dets)
+
+            # Centroides de portería: con sam3_text la azul suele faltar (bc=None, basta
+            # la amarilla); yolo_sam3/yolo dan ambas -> orientación más firme.
+            # Camino C: solve_masks usa color solo para detectar BLANCO (hue-agnóstico),
+            # así que el frame RGB sirve sin convertir a BGR. Sin alfombra -> se propaga.
             if field_mask is not None:
-                # Limpia blobs sueltos (muñequeras/reflejos) como la demo -> alfombra
-                # = un solo cuadrilátero, esquinas internas fiables.
+                # Limpia blobs sueltos (muñequeras/reflejos) -> alfombra = un cuadrilátero.
                 field_mask = _largest_component(field_mask)
-            yellow_mask = _largest_mask(dets.get(YELLOW_CLASS, []))
-            blue_mask = _largest_mask(dets.get(BLUE_CLASS, []))
-            # Centroides de portería (en la imagen) para fijar la orientación. Con
-            # sam3_text la azul suele faltar (bc=None, basta la amarilla); yolo_sam3 da
-            # ambas -> orientación más firme.
-            yc = mask_centroid(yellow_mask)
-            bc = mask_centroid(blue_mask)
-            # Camino C: H sobre la alfombra + centroides de portería. solve_masks solo
-            # usa color para detectar BLANCO (hue-agnóstico), así que el frame RGB de
-            # iter_frames sirve sin convertir a BGR. Si no hay alfombra, se propaga.
-            if field_mask is not None:
                 H, _status = vh.update_masks(frame, field_mask, yc, bc)
             else:
                 vh.n_propagated += 1
                 H, _status = vh.prev_H, "propagated"
 
-            # Objetos (id estable, clase, punto-pie): del JSON 2×2 o del mismo detector.
+            # Objetos (id estable, clase, punto-pie): del JSON 2×2 o del detector del frame.
             if frame_to_objs is not None:
                 objs = frame_to_objs.get(frame_index, [])
             else:
-                objs = tracker.update(_objects_from_dets(dets))
+                objs = tracker.update(objs_raw)
 
             projected: list[tuple[int, str, float, float]] = []
             if H is not None and objs:

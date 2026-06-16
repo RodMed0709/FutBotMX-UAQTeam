@@ -68,9 +68,9 @@ def main() -> None:
     except FileNotFoundError as exc:
         print(f"[src] YOLO best.pt: NO RESUELTO -> {exc}")
 
-    out_src = OUT_DIR / "2_src_render_minimap_video_yolo_sam3.mp4"
+    out_src = OUT_DIR / "2_src_render_minimap_video_yolo.mp4"
     r_src = render_minimap_video(
-        VIDEO, detector="yolo_sam3", conf=CONF,
+        VIDEO, detector="yolo", conf=CONF,  # camino rápido (cajas YOLO + green SAM3) = demo
         start_frame=START, frame_step=EVERY, max_frames=MAX_FRAMES,
         draw_overlay=True, output_path=out_src,
     )
