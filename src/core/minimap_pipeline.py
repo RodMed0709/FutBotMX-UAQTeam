@@ -61,6 +61,24 @@ def _largest_mask(dets: list) -> np.ndarray | None:
     return best
 
 
+def _largest_component(mask: np.ndarray) -> np.ndarray:
+    """Mayor componente conexo de una mascara booleana.
+
+    Limpia blobs sueltos que SAM3 puede colar en ``green_floor`` (reflejos, una
+    muñequera verde fuera del campo): si entran, la alfombra se ensancha y
+    ``inner_corners`` ajusta un rectangulo mas grande -> homografia con mala escala.
+    Espeja ``pod_minimap_sam3.largest_component`` (la demo).
+    """
+    import cv2
+
+    m = (mask > 0).astype(np.uint8)
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(m)
+    if n <= 1:  # sin componentes (solo fondo)
+        return m.astype(bool)
+    largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    return labels == largest
+
+
 def _foot_point(class_name: str, bbox) -> tuple[float, float]:
     """Punto de contacto con el piso: centro-inferior (robot) o centro (balon).
 
@@ -228,7 +246,10 @@ def render_minimap_video(
         wanted |= {ROBOT_CLASS, BALL_CLASS}
     needed_classes = [c for c in classes if c["name"] in wanted]
 
-    fps = get_video_fps(video_path)
+    # El video de salida corre a fps/frame_step para conservar la velocidad real:
+    # con frame_step=2 se escribe 1 de cada 2 frames (como la demo con every=2), así
+    # 150 frames a 15 fps duran 10 s en vez de 5 s a 30 fps.
+    fps = get_video_fps(video_path) / max(1, int(frame_step))
     if output_path is None:
         out_dir = PROJECT_ROOT / "notebooks" / "fase_4_homografia" / "outputs"
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -259,6 +280,10 @@ def render_minimap_video(
             # (anclas + objetos). Con yolo_sam3 esto es 1 YOLO + box-prompts + green texto.
             dets = detect(frame, classes=needed_classes, bundle=bundle, **detect_kwargs)
             field_mask = _largest_mask(dets.get(FIELD_CLASS, []))
+            if field_mask is not None:
+                # Limpia blobs sueltos (muñequeras/reflejos) como la demo -> alfombra
+                # = un solo cuadrilátero, esquinas internas fiables.
+                field_mask = _largest_component(field_mask)
             yellow_mask = _largest_mask(dets.get(YELLOW_CLASS, []))
             blue_mask = _largest_mask(dets.get(BLUE_CLASS, []))
             # Centroides de portería (en la imagen) para fijar la orientación. Con
