@@ -85,6 +85,40 @@ def registration_overlap(white: np.ndarray, H: np.ndarray, band: int = 7) -> flo
     return line_overlap_score(white, pts, band=band)
 
 
+def field_quad_from_white(white: np.ndarray):
+    """4 esquinas del campo (perspectiva) por convex-hull del blanco → cuadrilátero.
+
+    El blanco traza el perímetro del campo (las líneas de borde son el contorno
+    externo; las áreas/central quedan dentro del hull). El hull aproximado a 4
+    vértices da las 4 esquinas en perspectiva — robusto en vista lateral, donde el
+    rectángulo es un trapecio (minAreaRect falla).
+
+    Returns:
+        ``np.ndarray (4,2) float32`` (winding por ángulo) o ``None``.
+    """
+    import cv2
+
+    cnts, _ = cv2.findContours(white, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return None
+    pts = np.vstack([c.reshape(-1, 2) for c in cnts]).astype(np.int32)
+    if len(pts) < 8:
+        return None
+    hull = cv2.convexHull(pts)
+    peri = cv2.arcLength(hull, True)
+    quad = None
+    for f in (0.01, 0.02, 0.03, 0.05, 0.08):
+        ap = cv2.approxPolyDP(hull, f * peri, True)
+        if len(ap) == 4:
+            quad = ap.reshape(4, 2).astype(np.float32)
+            break
+    if quad is None:
+        return None
+    c = quad.mean(0)
+    a = np.arctan2(quad[:, 1] - c[1], quad[:, 0] - c[0])
+    return quad[np.argsort(a)]
+
+
 def solve_lines_masks(img_bgr, carpet_mask, yc=None, bc=None):
     """Homografía imagen->cm por ajuste de líneas blancas, orientada y con overlap.
 
@@ -100,38 +134,40 @@ def solve_lines_masks(img_bgr, carpet_mask, yc=None, bc=None):
     from src.core import field_landmarks as fl
 
     white = field_white_lines(img_bgr, carpet_mask)
-    corners = inner_corners_extrapolated(white)
     res = {"H": None, "corners": None, "overlap": 0.0, "white": white, "ok": False}
-    if corners is None:
+
+    # Dos fuentes de esquinas: minAreaRect-extrapolado (bueno cenital) y convex-hull
+    # cuadrilátero (bueno lateral/perspectiva). Se prueban ambas y gana el overlap.
+    candidates = [c for c in (inner_corners_extrapolated(white),
+                              field_quad_from_white(white)) if c is not None]
+    if not candidates:
         return res
 
     inner = np.array([fl.LANDMARK_POINTS[n] for n in
                       ["inner_tl", "inner_tr", "inner_br", "inner_bl"]], np.float64)
     cx = fl.CENTER_CIRCLE[0]
     best = None
-    for r in range(4):
-        tgt = np.roll(inner, -r, axis=0)
-        H, _ = cv2.findHomography(corners.astype(np.float64), tgt, 0)
-        if H is None:
-            continue
-        # orientación: amarillo debe caer a la izquierda (x<cx), azul a la derecha
-        ok_orient = True
-        if yc is not None:
-            yx = cv2.perspectiveTransform(np.array([[yc]], np.float64), H)[0, 0, 0]
-            ok_orient = ok_orient and (yx < cx)
-        if bc is not None:
-            bx = cv2.perspectiveTransform(np.array([[bc]], np.float64), H)[0, 0, 0]
-            ok_orient = ok_orient and (bx > cx)
-        if yc is None and bc is None:
+    for corners in candidates:
+        for r in range(4):
+            tgt = np.roll(inner, -r, axis=0)
+            H, _ = cv2.findHomography(corners.astype(np.float64), tgt, 0)
+            if H is None:
+                continue
             ok_orient = True
-        if not ok_orient:
-            continue
-        ov = registration_overlap(white, H)
-        if best is None or ov > best[2]:
-            best = (H, np.roll([0, 1, 2, 3], -r), ov)
+            if yc is not None:
+                yx = cv2.perspectiveTransform(np.array([[yc]], np.float64), H)[0, 0, 0]
+                ok_orient = ok_orient and (yx < cx)
+            if bc is not None:
+                bx = cv2.perspectiveTransform(np.array([[bc]], np.float64), H)[0, 0, 0]
+                ok_orient = ok_orient and (bx > cx)
+            if not ok_orient:
+                continue
+            ov = registration_overlap(white, H)
+            if best is None or ov > best[2]:
+                best = (H, corners, ov)
     if best is None:
         return res
-    res.update({"H": best[0], "corners": corners, "overlap": best[2], "ok": True})
+    res.update({"H": best[0], "corners": best[1], "overlap": best[2], "ok": True})
     return res
 
 
