@@ -133,23 +133,37 @@ def solve_lines_masks(img_bgr, carpet_mask, yc=None, bc=None):
     import cv2
     from src.core import field_landmarks as fl
 
+    from src.core import field_template as ft
+
     white = field_white_lines(img_bgr, carpet_mask)
     res = {"H": None, "corners": None, "overlap": 0.0, "white": white, "ok": False}
 
-    # Dos fuentes de esquinas: minAreaRect-extrapolado (bueno cenital) y convex-hull
-    # cuadrilátero (bueno lateral/perspectiva). Se prueban ambas y gana el overlap.
-    candidates = [c for c in (inner_corners_extrapolated(white),
-                              field_quad_from_white(white)) if c is not None]
-    if not candidates:
-        return res
-
     inner = np.array([fl.LANDMARK_POINTS[n] for n in
                       ["inner_tl", "inner_tr", "inner_br", "inner_bl"]], np.float64)
+    carpet = np.array(ft.CARPET_CORNERS, np.float64)
+
+    # Tres fuentes de esquinas, cada una con su template destino:
+    #  - esquinas interiores extrapoladas (cenital) -> rectángulo INTERIOR
+    #  - cuadrilátero del blanco (perspectiva)       -> rectángulo INTERIOR
+    #  - cuadrilátero del VERDE de SAM3 (blob limpio) -> esquinas de ALFOMBRA
+    cand = []
+    ic = inner_corners_extrapolated(white)
+    if ic is not None:
+        cand.append((ic, inner))
+    wq = field_quad_from_white(white)
+    if wq is not None:
+        cand.append((wq, inner))
+    gq = field_quad_from_white((carpet_mask > 0).astype(np.uint8) * 255)
+    if gq is not None:
+        cand.append((gq, carpet))
+    if not cand:
+        return res
+
     cx = fl.CENTER_CIRCLE[0]
     best = None
-    for corners in candidates:
+    for corners, tgt0 in cand:
         for r in range(4):
-            tgt = np.roll(inner, -r, axis=0)
+            tgt = np.roll(tgt0, -r, axis=0)
             H, _ = cv2.findHomography(corners.astype(np.float64), tgt, 0)
             if H is None:
                 continue
