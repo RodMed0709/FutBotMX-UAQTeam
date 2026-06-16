@@ -1,5 +1,11 @@
 """Minimap fase_4 SOBRE SAM3 (corre en el POD GPU).
 
+OBSOLETO / REFERENCIA: este script quedo reemplazado por la pieza consolidada de `src`,
+``src.core.minimap_pipeline.render_minimap_video(detector="yolo")``, que reproduce 1:1 este
+resultado (verificado en pod, mismo clip ``IMG_9933_c``) a la misma velocidad, pero como
+modulo composable y config-driven (sin imports planos de notebooks). Se conserva solo como
+referencia historica del camino C. Para generar minimaps usa ``render_minimap_video``.
+
 Une lo que el equipo quiere para categoria Profesional:
 - **YOLO (best.pt)** detecta cajas: robot, orange_ball, yellow_zone, blue_zone.
 - **SAM3 text-prompt** segmenta `green_floor` (la alfombra) -> mascara de alfombra.

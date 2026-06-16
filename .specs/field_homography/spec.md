@@ -77,8 +77,14 @@ quedó *probado y falla*). El trabajo pivotó a dos caminos que sí miden bien:
   → `solve_masks` → H sobre anclas SAM3/YOLO. Gate de consistencia temporal + EMA + propagación.
   **5 videos demo, error 9–23 cm.** Cumple el gate visual y de reproyección de §Verificación.
 
-**Pendiente de consolidación:** integrar `VideoHomography`/`solve_masks` (camino C) al
-`minimap_pipeline.py` del repo (hoy aún en el camino A) y conservar los objetos vía
-`tracks_json` de fase_2 (`yolo_sam3`). Las **métricas cuantitativas** (velocidad cm/s,
-posesión, zonas, heatmap) que la H métrica habilita **no** son de esta tarea: pasan a
-**fase_5 (análisis de eventos)**.
+**Consolidación HECHA y CERRADA** (rama `feat/consolidate-homography-path-c`, 2026-06-15): el
+camino C vive en `src/core/` (`auto_homography.py` + `minimap_pipeline.py`), con render alineado
+a la demo (`minimap.py`: cuadro gris robot, balón naranja, `draw_field_overlay`). El driver
+`render_minimap_video` es **agnóstico al pipeline**: parámetro `detector` ∈
+{`sam3_text`, `yolo_sam3`, `yolo`} para las anclas/objetos (u objetos de `tracks_json` de cualquier
+2×2); `start_frame`/`frame_step` para recortar tramo; fps de salida real. El camino `yolo` (cajas
+YOLO + `green_floor` SAM3, 1 SAM3/frame) **reemplaza a `pod_minimap_sam3.py`** (marcado obsoleto):
+verificado en pod sobre el mismo clip `IMG_9933_c` que iguala a la demo en velocidad y resultado
+(`testing/test_homografia_comparativa.py`). `yolo_sam3` (máscaras finas) se conserva para fase_5.
+Las **métricas cuantitativas** (velocidad cm/s, posesión, zonas, heatmap) que la H métrica habilita
+**no** son de esta tarea: pasan a **fase_5 (análisis de eventos)**.
