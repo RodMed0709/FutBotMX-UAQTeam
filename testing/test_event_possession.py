@@ -29,7 +29,13 @@ from src.utils import PROJECT_ROOT
 
 # --- Configuración del clip ---
 CLIP_SECONDS = 35  # duración objetivo del clip a analizar (300 frames ≈ 10 s no alcanzaba)
-DEFAULT_TRACKS = PROJECT_ROOT / "outputs/inference/fase3_eventos/IMG_9780/IMG_9780.json"
+# Clip de prueba: partido real ~34.4 s @ 60 fps (hasta 5 robots, balón detectado ~88%),
+# config 2×2 líder yolo_sam3+bytetrack. (video-1054 es un demo de 1 robot; no sirve.)
+DEFAULT_TRACKS = (
+    PROJECT_ROOT
+    / "outputs/inference/trackers/yolo_sam3+bytetrack"
+    / "video-714_singular_display/video-714_singular_display.json"
+)
 GEN_DETECTOR, GEN_TRACKER = "yolo_sam3", "bytetrack"  # para el modo --video (pod)
 
 

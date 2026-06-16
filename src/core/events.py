@@ -1,15 +1,11 @@
-"""Análisis de eventos del partido sobre el JSON de tracking (fase_5, Capa A).
+"""Posesión por cercanía sobre el JSON de tracking (fase_5, Capa A · tarea event_possession).
 
-Capa **relacional (en píxeles), UNIVERSAL**: usa relaciones objeto-a-objeto dentro del
-mismo frame, así que funciona sobre el JSON de **cualquier** video (cámara superior o
-Meta-Glasses) sin homografía ni GPU.
+Capa **relacional (en píxeles), UNIVERSAL**: funciona sobre el JSON de **cualquier** video
+sin homografía ni GPU. ``compute_possession`` asigna el balón al robot más cercano dentro de
+un gate (relativo al tamaño del robot), con histéresis, y resume métricas temporales.
 
-Primera pieza (tarea ``event_possession``):
-- ``load_frame_objects`` invierte el JSON a una estructura **por frame** (semilla de un
-  futuro ``events_core``, reusable por las demás tareas de eventos).
-- ``compute_possession`` calcula la **posesión por cercanía**: el robot más cercano al
-  balón dentro de un gate (relativo al tamaño del robot), con histéresis, y un resumen de
-  métricas temporales.
+La base compartida (``FrameObject``/``load_frame_objects``/``ball_centroid``) vive en
+``events_core`` y se re-exporta aquí por compatibilidad.
 
 ``numpy`` solo para distancias; sin GPU, sin homografía.
 """
@@ -23,23 +19,28 @@ from pathlib import Path
 
 import numpy as np
 
-ROBOT_CLASS = "robot"
-BALL_CLASSES = {"orange_ball", "ball"}
+from src.core.events_core import (
+    BALL_CLASSES,
+    ROBOT_CLASS,
+    FrameObject,
+    ball_centroid,
+    load_frame_objects,
+)
+
+__all__ = [
+    "BALL_CLASSES",
+    "ROBOT_CLASS",
+    "FrameObject",
+    "load_frame_objects",
+    "ball_centroid",
+    "PossessionResult",
+    "compute_possession",
+    "write_possession_json",
+]
 
 # Defaults configurables por parámetro.
 DEFAULT_GATE_K = 1.5     # gate de cercanía = gate_k * diagonal del bbox del robot
 DEFAULT_MIN_FRAMES = 3   # frames consecutivos para confirmar un cambio de posesión
-
-
-@dataclass
-class FrameObject:
-    """Un objeto detectado en un frame (cualquier clase)."""
-
-    obj_id: int
-    class_name: str
-    bbox: tuple[float, float, float, float]  # [x, y, w, h]
-    centroid: tuple[float, float]            # [x, y]
-    score: float
 
 
 @dataclass
@@ -50,51 +51,9 @@ class PossessionResult:
     resumen: dict
 
 
-def load_frame_objects(tracks_json: str | Path) -> dict[int, list[FrameObject]]:
-    """Invierte el JSON de tracking a una estructura **por frame**.
-
-    Returns:
-        ``{frame_index: [FrameObject, ...]}`` con todas las clases. Semilla del futuro
-        ``events_core`` (reusable por las siguientes tareas de eventos).
-
-    Raises:
-        ValueError: si ``bbox`` no es ``[x,y,w,h]`` o ``centroid`` no es ``[x,y]``.
-    """
-    data = json.loads(Path(tracks_json).read_text(encoding="utf-8"))
-    by_frame: dict[int, list[FrameObject]] = {}
-    for tr in data.get("tracks", []):
-        cls = tr["class"]
-        oid = int(tr["obj_id"])
-        for obs in tr["observations"]:
-            bbox = obs["bbox"]
-            centroid = obs["centroid"]
-            if not (isinstance(bbox, (list, tuple)) and len(bbox) == 4):
-                raise ValueError(f"bbox debe ser [x,y,w,h]; se recibió: {bbox!r}")
-            if not (isinstance(centroid, (list, tuple)) and len(centroid) == 2):
-                raise ValueError(f"centroid debe ser [x,y]; se recibió: {centroid!r}")
-            by_frame.setdefault(int(obs["frame_index"]), []).append(
-                FrameObject(
-                    obj_id=oid,
-                    class_name=cls,
-                    bbox=tuple(float(v) for v in bbox),
-                    centroid=(float(centroid[0]), float(centroid[1])),
-                    score=float(obs.get("score", 0.0)),
-                )
-            )
-    return by_frame
-
-
 def _bbox_diagonal(bbox: tuple[float, float, float, float]) -> float:
     """Diagonal del bbox ``[x,y,w,h]`` (escala del robot para el gate)."""
     return float(np.hypot(bbox[2], bbox[3]))
-
-
-def _ball_centroid(objs: list[FrameObject]) -> tuple[float, float] | None:
-    """Centroide del balón (clase ``orange_ball`` de mayor score) o ``None``."""
-    balls = [o for o in objs if o.class_name in BALL_CLASSES]
-    if not balls:
-        return None
-    return max(balls, key=lambda o: o.score).centroid
 
 
 def _nearest_robot(
@@ -113,7 +72,7 @@ def _raw_possession(by_frame: dict[int, list[FrameObject]], gate_k: float) -> di
     """Poseedor **crudo** por frame (sin histéresis)."""
     raw: dict[int, int | None] = {}
     for idx, objs in by_frame.items():
-        ball = _ball_centroid(objs)
+        ball = ball_centroid(objs)
         if ball is None:
             raw[idx] = None
             continue
@@ -207,7 +166,7 @@ def compute_possession(
     """
     raw = _raw_possession(by_frame, gate_k)
     por_frame = _apply_hysteresis(raw, min_frames)
-    ball_visible = {idx: _ball_centroid(objs) is not None for idx, objs in by_frame.items()}
+    ball_visible = {idx: ball_centroid(objs) is not None for idx, objs in by_frame.items()}
     return PossessionResult(por_frame=por_frame, resumen=_summarize(por_frame, ball_visible, fps))
 
 
