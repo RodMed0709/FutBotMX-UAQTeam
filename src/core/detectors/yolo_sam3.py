@@ -30,6 +30,7 @@ def detect(
     frame: np.ndarray,
     classes: list[dict] | None = None,
     bundle: Sam3Bundle | None = None,
+    conf: float | None = None,
 ) -> dict[str, list[Detection]]:
     """Detector YOLO+SAM3: cajas YOLO -> máscaras box-prompt; green_floor por texto.
 
@@ -38,6 +39,9 @@ def detect(
         classes: clases del repo. ``None`` ⇒ las de la configuración. Las que tengan
             ``yolo_id`` van por YOLO→box-prompt; el resto por text-prompt.
         bundle: SAM3 cargado. ``None`` ⇒ ``load_sam3()``.
+        conf: umbral de confianza de YOLO. ``None`` ⇒ el de la config (sección
+            ``yolo``). Permite ajustar la sensibilidad de la localización sin tocar
+            la config.
 
     Returns:
         ``{nombre_clase: [Detection con máscara]}`` (misma forma que el detector
@@ -53,7 +57,7 @@ def detect(
 
     # Clases YOLO: cajas (detect_boxes) -> máscaras finas (SAM3 box-prompt).
     if yolo_classes:
-        boxes_by_class = detect_boxes(frame, classes=yolo_classes)
+        boxes_by_class = detect_boxes(frame, classes=yolo_classes, conf=conf)
         for cls in yolo_classes:
             name = cls["name"]
             bds = boxes_by_class.get(name, [])
