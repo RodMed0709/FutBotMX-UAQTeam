@@ -48,37 +48,62 @@ def cut_clip(src: Path, dst: Path, n_frames: int) -> Path:
     return dst
 
 
+def _config_outputs_dir() -> str:
+    """``working_dirs.outputs_dir`` de la config activa (para ubicar el JSON de tracking)."""
+    import json as _json
+
+    from src.core.detectors.yolo_boxes import _load_env
+
+    cfg_name = _load_env(PROJECT_ROOT / ".env").get("CONFIG_FILENAME", "").strip()
+    cfg = _json.loads((PROJECT_ROOT / "configs" / cfg_name).read_text(encoding="utf-8"))
+    return cfg["working_dirs"]["outputs_dir"]
+
+
 def prepare(video: Path) -> dict:
-    """Genera clip + tracking(+máscaras) + homografía para el primer minuto de ``video``."""
+    """Genera clip + tracking(+máscaras) + homografía para el primer minuto de ``video``.
+
+    **Idempotente**: salta cada paso (corte / tracking / homografía) si su salida ya existe,
+    así que interrumpir y re-correr reanuda sin rehacer lo costoso. Para forzar un paso,
+    borra su archivo de salida.
+    """
     from src.core.inference import run_inference
+    from src.core.inference_schema import inference_paths
     from src.core.minimap_pipeline import render_minimap_video
 
-    fps = get_video_fps(video)
-    n = round(CLIP_SECONDS * fps)
-    clip = OUT_DIR / f"{video.stem}_min1.mp4"
-    print(f"[{video.stem}] cortando {CLIP_SECONDS}s = {n} frames -> {clip}")
-    cut_clip(video, clip, n)
+    stem = f"{video.stem}_min1"
+    clip = OUT_DIR / f"{stem}.mp4"
+    minimap = OUT_DIR / f"{stem}_minimap.mp4"
+    json_path, _ = inference_paths(stem, _config_outputs_dir(), RUN_LABEL)
 
-    print(f"[{video.stem}] detección+segmentación+tracking (yolo_sam3+bytetrack, masks)…")
-    inf = run_inference(
-        clip, mode="tracking",
-        detector="yolo_sam3", tracker="bytetrack",
-        include_masks=True, render_video=True, run_label=RUN_LABEL,
-    )
+    # 1) Corte del clip.
+    if clip.exists():
+        print(f"[{stem}] clip ya existe -> skip corte")
+    else:
+        n = round(CLIP_SECONDS * get_video_fps(video))
+        print(f"[{stem}] cortando {CLIP_SECONDS}s = {n} frames -> {clip}")
+        cut_clip(video, clip, n)
 
-    print(f"[{video.stem}] homografía (minimap, detector=yolo, objetos del JSON)…")
-    mm = render_minimap_video(
-        clip, tracks_json=inf["json"], detector="yolo",
-        draw_overlay=True, output_path=OUT_DIR / f"{video.stem}_min1_minimap.mp4",
-    )
+    # 2) Detección + segmentación + tracking (JSON extendido con máscaras).
+    if json_path.exists():
+        print(f"[{stem}] tracking JSON ya existe -> skip inferencia")
+    else:
+        print(f"[{stem}] detección+segmentación+tracking (yolo_sam3+bytetrack, masks)…")
+        json_path = Path(run_inference(
+            clip, mode="tracking", detector="yolo_sam3", tracker="bytetrack",
+            include_masks=True, render_video=True, run_label=RUN_LABEL,
+        )["json"])
 
-    return {
-        "clip": clip,
-        "tracking_json": inf["json"],
-        "tracking_video": inf.get("video"),
-        "minimap": mm["video"],
-        "homografia": mm["homography"],
-    }
+    # 3) Homografía (minimap, objetos del JSON).
+    if minimap.exists():
+        print(f"[{stem}] minimap ya existe -> skip homografía")
+    else:
+        print(f"[{stem}] homografía (minimap, detector=yolo, objetos del JSON)…")
+        render_minimap_video(
+            clip, tracks_json=json_path, detector="yolo",
+            draw_overlay=True, output_path=minimap,
+        )
+
+    return {"clip": clip, "tracking_json": json_path, "minimap": minimap}
 
 
 def main() -> None:
