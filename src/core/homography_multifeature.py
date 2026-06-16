@@ -56,6 +56,12 @@ def detect_center_circle(
 
     H, W = white.shape
     area_img = float(H * W)
+    diag = float(np.hypot(H, W))
+    wy, wx = np.where(white > 0)
+    if len(wx) < 50:
+        return None
+    white_centroid = np.array([wx.mean(), wy.mean()])  # ~centro del campo (lineas)
+
     n, lab, stats, _cent = cv2.connectedComponentsWithStats((white > 0).astype(np.uint8), 8)
 
     best = None
@@ -83,7 +89,10 @@ def detect_center_circle(
         # "anillo": hueco -> fill (area/bbox) bajo-medio; solido -> alto.
         fill = area / (w * h + 1e-6)
         ring = 1.0 - min(1.0, abs(fill - 0.30) / 0.30)  # 1 en fill~0.30, cae lejos
-        score = ratio * (0.4 + 0.6 * ring)
+        # prior de posicion: el circulo central esta cerca del centroide de lineas.
+        d = float(np.linalg.norm(np.array([ex, ey]) - white_centroid)) / diag
+        near = float(np.exp(-(d / 0.18) ** 2))  # ~1 si esta cerca, cae con la distancia
+        score = (0.5 + 0.5 * ratio) * (0.3 + 0.7 * ring) * near
         if score > best_score:
             best_score = score
             best = (float(ex), float(ey))
