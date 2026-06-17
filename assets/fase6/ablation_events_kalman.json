@@ -1,0 +1,79 @@
+{
+  "clip": "IMG_9933_5m30",
+  "fps": 29.988,
+  "sin_kalman": {
+    "goles": 1,
+    "tiros": 4,
+    "detalle": [
+      [
+        "tiro",
+        "blue",
+        19,
+        22
+      ],
+      [
+        "tiro",
+        "blue",
+        113,
+        275
+      ],
+      [
+        "tiro",
+        "blue",
+        525,
+        535
+      ],
+      [
+        "tiro",
+        "blue",
+        821,
+        1023
+      ],
+      [
+        "gol",
+        "blue",
+        1167,
+        1245
+      ]
+    ],
+    "v_max_balon_cms": 154.6
+  },
+  "con_kalman": {
+    "goles": 1,
+    "tiros": 4,
+    "detalle": [
+      [
+        "tiro",
+        "blue",
+        19,
+        22
+      ],
+      [
+        "tiro",
+        "blue",
+        113,
+        275
+      ],
+      [
+        "tiro",
+        "blue",
+        607,
+        609
+      ],
+      [
+        "tiro",
+        "blue",
+        821,
+        1023
+      ],
+      [
+        "gol",
+        "blue",
+        1167,
+        1245
+      ]
+    ],
+    "v_max_balon_cms": 126.9
+  },
+  "frames_oclusion_rellenados": 352
+}
