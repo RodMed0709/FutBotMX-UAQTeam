@@ -16,8 +16,10 @@ import numpy as np
 
 from src.core import field_template as ft
 from src.core.inference_schema import decode_rle
+from src.core.event_goal_geometric import compute_geometric_goals  # de él (solo se llama)
 from src.core.kalman_kinematics import compute_kalman_states, load_metric_result_from_json
 from src.core.metric_heatmap import render_heatmap  # el heatmap del compañero (solo se llama)
+from src.core.metric_positions import MetricPosition, MetricResult
 from src.core.video_writer import open_video_writer
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -68,6 +70,19 @@ def main() -> None:
     by_obj = {o.obj_id: (o.cls, {s.frame_index: s for s in o.estados}) for o in kres.por_obj}
     all_f = sorted({s.frame_index for o in kres.por_obj for s in o.estados})
     f0 = all_f[0] if all_f else 0
+
+    # --- métricas Kalman para la barra inferior (estilo del compa, alimentado por KF) ---
+    kmet = MetricResult(
+        posiciones=[MetricPosition(o.obj_id, o.cls, s.frame_index, s.xy_cm, "estimated")
+                    for o in kres.por_obj for s in o.estados],
+        resumen=raw.resumen)
+    try:
+        goals = compute_geometric_goals(kmet, fps=fps)
+        goal_spans = [(e.frame_inicio, e.frame_fin, e.zona) for e in goals.eventos]
+        n_goles = goals.resumen.get("total_eventos", 0)
+    except Exception:  # noqa: BLE001
+        goal_spans, n_goles = [], 0
+    vmax_ball = max((o.v_max_cms for o in kres.por_obj if o.cls == "orange_ball"), default=0.0)
 
     # rejilla del heatmap (cm) + estado acumulado
     cols = int(np.ceil(ft.LENGTH_CM / HEAT_BIN)); rowsg = int(np.ceil(ft.WIDTH_CM / HEAT_BIN))
@@ -152,7 +167,23 @@ def main() -> None:
                      _label(_fit(trk, H), "Tracking"),
                      _label(_fit(mm, H), "Minimap homografia+Kalman"),
                      _label(_fit(hm, H), "Heatmap (homografia)")]
-            append(cv2.hconcat(cells))
+            row = cv2.hconcat(cells)
+
+            # --- barra de métricas (abajo, estilo del compa, datos del Kalman) ---
+            ball_v = next((states[f].speed_cms for _o, (c, states) in by_obj.items()
+                           if c == "orange_ball" and f in states), 0.0)
+            goal = next((z for s, e, z in goal_spans if s <= f <= e), None)
+            bar = np.full((84, row.shape[1], 3), 28, np.uint8)
+            cv2.putText(bar, f"Ball speed (Kalman): {ball_v:5.0f} cm/s   |   v_max: {vmax_ball:.0f} cm/s"
+                        f"   |   goals: {n_goles}", (12, 34),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+            cv2.putText(bar, "velocidad en cm/s via filtro de Kalman (cm-space) + homografia por lineas",
+                        (12, 66), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1, cv2.LINE_AA)
+            if goal:
+                cv2.rectangle(bar, (0, 0), (row.shape[1] - 1, 83), (255, 40, 40), 5)
+                cv2.putText(bar, f"GOL - porteria {goal}", (row.shape[1] // 2 - 120, 52),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 60, 60), 3, cv2.LINE_AA)
+            append(cv2.vconcat([row, bar]))
             n += 1; f += 1
     cap.release()
     print(f"[fase6] demo 5 paneles -> {OUT} ({n} frames, {n / fps:.1f}s)")
