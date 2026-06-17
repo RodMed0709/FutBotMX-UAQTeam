@@ -13,6 +13,48 @@ en tus propios notebooks, abre el **recetario**:
 
 ---
 
+## 🚧 Reorganización en curso para la entrega (NOTA TEMPORAL)
+
+> Esta sección es **temporal** y se eliminará cuando se reescriba el README final. Deja
+> constancia del proceso de **documentación, limpieza y preparación de entregables** que
+> está en marcha, para que cualquiera pueda continuarlo **siguiendo el mismo plan**.
+
+**Plan de 6 pasos** (en orden) hacia los entregables de la convocatoria
+(ver `.specs/drafts/final_entregables_convocatoria.md` y `diseño_readme_guia.md`):
+
+1. ✅ **Documentación por fases** — `docs/` (índice + 12 fases) con enlaces a código
+   (`archivo.py#Lnnn`), notebooks y tareas `.specs/`. **Empieza por
+   [`docs/README.md`](docs/README.md).**
+2. ✅ **Recetario ampliado** — `notebooks/cookbook_pipeline.ipynb` ahora ejemplifica
+   **todo** el pipeline, incluido el post-proceso CPU-local (homografía → métrica →
+   eventos → broadcast → Kalman).
+3. ✅ **Limpieza del repo** — se **decidió no hacerla**: `outputs/` está git-ignored y no
+   afecta a un entorno nuevo. En su lugar, el README final documentará los **insumos no
+   versionados** (ver abajo).
+4. ⏭️ **`main.py` end-to-end (SIGUIENTE)** — script reproducible que corra el pipeline de
+   principio a fin y **genere los demos** del README. Toca código ⇒ se abrirá su SDD
+   (`spec→plan→tasks`) antes de implementar. **La próxima sesión arranca aquí.**
+5. ⏳ **README final** — según `diseño_readme_guia`. Incluirá la sección de **insumos no
+   versionados requeridos** (ver tabla abajo) y se ligará al TODO `bootstrap_data`.
+6. ⏳ **Entregables visuales** — gifs/pngs/videos/gráficas que falten, generados por el
+   `main` (o por un notebook que dependa de que el `main` corra end-to-end).
+
+**Insumos no versionados requeridos para reproducir todo** (git-ignored; pendiente de
+redactar formalmente en el README final):
+
+| Insumo | Ruta (de la config) | Para qué | ¿`bootstrap_data`? |
+|---|---|---|---|
+| Videos `.MOV` | `data/raw/` | dataset | sí |
+| Modelo SAM3 (`sam3.pt`+HF) | `assets/sam3/` | segmentación | sí |
+| YOLO afinado `best.pt` | `assets/yolo/best.pt` | detector `yolo_sam3` | **no (gap del draft)** |
+| `.env` | raíz | `CONFIG_FILENAME`, etc. | n/a (lo crea el usuario) |
+
+Pendientes anotados durante el proceso: ampliar `bootstrap_data` para incluir el YOLO
+`best.pt`; corregir en `CLAUDE.md` la descripción de los mounts de Docker (lo pide el
+propio draft del bootstrap).
+
+---
+
 ## Estado actual (qué funciona hoy)
 
 El **pipeline SAM3** está construido y operativo de punta a punta. Hoy puedes, sobre un
