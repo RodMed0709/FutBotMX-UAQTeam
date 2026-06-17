@@ -14,6 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
+from src.core.events_core import BALL_CLASSES
 from src.core.kalman_state import KFParams, KalmanState, run_kalman_on_track
 from src.core.metric_positions import MetricPosition, MetricResult, compute_metric_positions
 
@@ -149,6 +150,54 @@ def compute_kalman_states(
         "nota": "KF velocidad-constante en cm; predict-only rellena oclusiones (<=max_gap)",
     }
     return KalmanResult(por_obj=por_obj, resumen=resumen)
+
+
+def apply_kalman_to_metric(
+    metric: MetricResult, kres: KalmanResult, *, ball_only: bool = True
+) -> MetricResult:
+    """Refina un ``MetricResult`` reemplazando el balón por los estados Kalman de ``kres``.
+
+    Conserva ``H_por_frame`` y ``resumen`` intactos; robots/zonas pasan **sin tocar**. Con
+    ``ball_only=True`` solo se refinan las clases de balón (``BALL_CLASSES``): el modelo de
+    velocidad constante no mejora a los robots (maniobra) — ver fase 6. Cada posición refinada
+    lleva ``source`` (``"measured"|"predicted"|"gated"``); los frames de oclusión del balón (sin
+    ``xy_cm`` en T3, o ausentes) quedan rellenados con ``source="predicted"``.
+    """
+    # estados Kalman del balón indexados por (obj_id, frame)
+    kf_by_key: dict[tuple[int, int], KalmanState] = {}
+    for o in kres.por_obj:
+        if ball_only and o.cls not in BALL_CLASSES:
+            continue
+        for s in o.estados:
+            kf_by_key[(s.obj_id, s.frame_index)] = s
+
+    nuevas: list[MetricPosition] = []
+    vistos: set[tuple[int, int]] = set()
+    # 1) recorre las posiciones T3; reemplaza el balón donde haya estado Kalman
+    for p in metric.posiciones:
+        key = (p.obj_id, p.frame_index)
+        s = kf_by_key.get(key)
+        if s is not None:
+            nuevas.append(MetricPosition(p.obj_id, p.cls, p.frame_index,
+                                         xy_cm=s.xy_cm, status_H=p.status_H, source=s.source))
+        else:
+            nuevas.append(p)
+        vistos.add(key)
+    # 2) añade los frames de balón rellenados por oclusión que T3 no tenía
+    for key, s in kf_by_key.items():
+        if key in vistos:
+            continue
+        nuevas.append(MetricPosition(s.obj_id, s.cls, s.frame_index,
+                                     xy_cm=s.xy_cm, status_H="estimated", source=s.source))
+    nuevas.sort(key=lambda p: (p.frame_index, p.obj_id))
+    return MetricResult(posiciones=nuevas, resumen=metric.resumen, H_por_frame=metric.H_por_frame)
+
+
+def refine_with_kalman(metric: MetricResult, *, ball_only: bool = True) -> MetricResult:
+    """Conveniencia: corre el KF sobre ``metric`` y aplica el refinamiento (para tests/llamadores
+    fuera del broadcast; el broadcast reusa ``kres`` también para el panel de velocidad)."""
+    kres = compute_kalman_states(metric, fps=metric.resumen.get("fps"))
+    return apply_kalman_to_metric(metric, kres, ball_only=ball_only)
 
 
 def write_kalman_states_json(result: KalmanResult, path: str | Path) -> Path:

@@ -48,6 +48,9 @@ class MetricPosition:
     frame_index: int
     xy_cm: tuple[float, float] | None
     status_H: str
+    # Origen Kalman de la posición: ``None`` = cruda (T3); ``"measured"|"predicted"|"gated"``
+    # si fue refinada por ``kalman_kinematics.apply_kalman_to_metric``. Opcional/retrocompatible.
+    source: str | None = None
 
 
 @dataclass
@@ -251,6 +254,8 @@ def write_metric_positions_json(result: MetricResult, path: str | Path) -> Path:
                 "frame_index": p.frame_index,
                 "xy_cm": list(p.xy_cm) if p.xy_cm is not None else None,
                 "status_H": p.status_H,
+                # solo se serializa si viene de Kalman (no altera los JSON crudos de T3)
+                **({"source": p.source} if p.source is not None else {}),
             }
             for p in result.posiciones
         ],

@@ -31,6 +31,7 @@ from src.core.event_shot_goal import compute_shot_vs_goal
 from src.core.events_core import BALL_CLASSES, ROBOT_CLASS, load_frame_objects
 from src.core.events_schema import events_paths
 from src.core.frame_extraction import get_video_fps, iter_frames
+from src.core.kalman_kinematics import apply_kalman_to_metric, compute_kalman_states
 from src.core.metric_heatmap import render_heatmap
 from src.core.metric_positions import compute_metric_positions
 from src.core.minimap import CenitalMinimapRenderer, draw_field_overlay_on_frame
@@ -144,6 +145,34 @@ def _draw_event_feed(w: int, h: int, items: list[tuple[str, tuple[int, int, int]
     return p
 
 
+def _ball_speed_series(kres) -> tuple[dict[int, float], float]:
+    """``({frame: speed_cms}, v_max)`` del balón a partir de los estados Kalman."""
+    by_frame: dict[int, float] = {}
+    vmax = 0.0
+    for o in kres.por_obj:
+        if o.cls in BALL_CLASSES:
+            vmax = max(vmax, o.v_max_cms)
+            for s in o.estados:
+                by_frame[s.frame_index] = s.speed_cms
+    return by_frame, vmax
+
+
+def _draw_velocity_panel(w: int, h: int, vdata: dict) -> np.ndarray:
+    """Panel de velocidad del balón (Kalman): velocidad actual + v_max, estilo de los paneles."""
+    import cv2
+
+    p = np.full((h, w, 3), (32, 32, 32), dtype=np.uint8)
+    cv2.putText(p, "VELOCIDAD BALON (Kalman)", (10, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.55, _WHITE, 1,
+                cv2.LINE_AA)
+    now = vdata.get("now")
+    now_txt = f"{now:.0f} cm/s" if now is not None else "-"
+    cv2.putText(p, f"Ahora: {now_txt}", (10, 58), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (90, 200, 90), 2,
+                cv2.LINE_AA)
+    cv2.putText(p, f"v_max: {vdata.get('vmax', 0.0):.0f} cm/s", (10, 88),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (90, 160, 240), 1, cv2.LINE_AA)
+    return p
+
+
 def _draw_goal_banner(vid: np.ndarray, texto: str, progress: float) -> None:
     """Dibuja el banner deslizante (in place) sobre ``vid`` (BGR). ``progress`` ∈ [0,1]."""
     import cv2
@@ -162,7 +191,7 @@ def _draw_goal_banner(vid: np.ndarray, texto: str, progress: float) -> None:
 
 # --- layouts -------------------------------------------------------------------
 
-def _compose_layout2(vid, score, mdata, items, mini, heat, banner, margin) -> np.ndarray:
+def _compose_layout2(vid, score, mdata, items, mini, heat, banner, margin, vdata=None) -> np.ndarray:
     th = 720
     vid = _fit_box(vid, 100000, th)
     if banner is not None:
@@ -173,10 +202,16 @@ def _compose_layout2(vid, score, mdata, items, mini, heat, banner, margin) -> np
     canvas = np.full((sb.shape[0] + vh, width, 3), (18, 18, 18), dtype=np.uint8)
     canvas[0:sb.shape[0], :] = sb
     top = sb.shape[0]
-    # margen izquierdo: métricas (arriba) + lista de eventos (abajo)
+    # margen izquierdo: posesión (arriba) [+ velocidad (medio) si Kalman] + lista de eventos (abajo)
     left = np.full((vh, margin, 3), (28, 28, 28), dtype=np.uint8)
-    left[0:vh // 2] = _draw_metrics_panel(margin, vh // 2, mdata)
-    left[vh // 2:] = _draw_event_feed(margin, vh - vh // 2, items)
+    if vdata is not None:
+        h_metrics, h_vel = int(vh * 0.40), int(vh * 0.18)
+        left[0:h_metrics] = _draw_metrics_panel(margin, h_metrics, mdata)
+        left[h_metrics:h_metrics + h_vel] = _draw_velocity_panel(margin, h_vel, vdata)
+        left[h_metrics + h_vel:] = _draw_event_feed(margin, vh - h_metrics - h_vel, items)
+    else:
+        left[0:vh // 2] = _draw_metrics_panel(margin, vh // 2, mdata)
+        left[vh // 2:] = _draw_event_feed(margin, vh - vh // 2, items)
     canvas[top:top + vh, 0:margin] = left
     # centro: video
     canvas[top:top + vh, margin:margin + vw] = vid
@@ -190,7 +225,7 @@ def _compose_layout2(vid, score, mdata, items, mini, heat, banner, margin) -> np
     return canvas
 
 
-def _compose_layout1(vid, score, mdata, items, mini, heat, banner, margin) -> np.ndarray:
+def _compose_layout1(vid, score, mdata, items, mini, heat, banner, margin, vdata=None) -> np.ndarray:
     th = 900
     vid = _fit_box(vid, 100000, th)
     if banner is not None:
@@ -207,6 +242,9 @@ def _compose_layout1(vid, score, mdata, items, mini, heat, banner, margin) -> np
         _overlay(canvas, hh, W - hh.shape[1] - 8, 86, 0.85)
     mp = _draw_metrics_panel(pw, int(H * 0.22), mdata)
     _overlay(canvas, mp, 8, H - mp.shape[0] - 8, 0.7)
+    if vdata is not None:
+        vp = _draw_velocity_panel(pw, int(H * 0.12), vdata)
+        _overlay(canvas, vp, 8, H - mp.shape[0] - vp.shape[0] - 14, 0.7)
     fp = _draw_event_feed(pw, int(H * 0.30), items)
     _overlay(canvas, fp, W - fp.shape[1] - 8, H - fp.shape[0] - 8, 0.7)
     return canvas
@@ -251,6 +289,7 @@ def render_broadcast_overlay(
     *,
     layout: int = 2,
     goal_source: str = "strict",
+    use_kalman: bool = False,
     banner_secs: float = DEFAULT_BANNER_SECS,
     max_items: int = DEFAULT_MAX_ITEMS,
     margin_px: int = DEFAULT_MARGIN_PX,
@@ -291,6 +330,12 @@ def render_broadcast_overlay(
         metric = compute_metric_positions(tracks_json)
     except Exception:
         degradado = True
+    # Kalman como fuente de posiciones (flag, default off): refina el balón una sola vez; el mismo
+    # `kres` alimenta el panel de velocidad. Con el flag apagado, `metric` queda crudo (idéntico).
+    kres = None
+    if use_kalman and metric is not None:
+        kres = compute_kalman_states(metric, fps=fps)
+        metric = apply_kalman_to_metric(metric, kres)
     shot = compute_shot_vs_goal(metric if metric is not None else tracks_json, route="cm") \
         if metric is not None else compute_shot_vs_goal(tracks_json, route="px")
     if goal_source == "geometric" and metric is not None:
@@ -307,6 +352,8 @@ def render_broadcast_overlay(
     if not degradado:
         grid, hm_by_frame = _live_heatmap_state(metric, bin_cm)
         renderer = CenitalMinimapRenderer(trail_len=trajectory_window)
+    # panel de velocidad: serie del balón (solo si Kalman está activo)
+    ball_speed_by_frame, ball_vmax = _ball_speed_series(kres) if kres is not None else ({}, 0.0)
 
     items_all = _event_items(shot, viol)
     banner_frames = max(1, int(round(banner_secs * (fps or 30.0))))
@@ -357,7 +404,9 @@ def render_broadcast_overlay(
                 _accumulate(grid, hm_by_frame.get(fidx, []), bin_cm)
                 heat = render_heatmap(grid, bin_cm, sigma_cm=sigma_cm)
 
-            canvas = compose(vid, final_score, mdata, feed, mini, heat, banner, margin_px)
+            vdata = ({"now": ball_speed_by_frame.get(fidx), "vmax": ball_vmax}
+                     if kres is not None else None)
+            canvas = compose(vid, final_score, mdata, feed, mini, heat, banner, margin_px, vdata)
             if sample_frame is not None and sample_png is None and fidx >= sample_frame:
                 sample_png = events_paths(tracks_json.stem, "broadcast", "png")
                 cv2.imwrite(str(sample_png), canvas)

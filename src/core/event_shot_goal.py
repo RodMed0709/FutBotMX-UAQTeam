@@ -41,7 +41,7 @@ from pathlib import Path
 from src.core import field_template as ft
 from src.core.event_goal_geometric import _ball_by_frame
 from src.core.event_goals import _events_from_series, _zones_present, _ZONE_LABEL
-from src.core.events_core import ball_centroid, load_frame_objects
+from src.core.events_core import BALL_CLASSES, ball_centroid, load_frame_objects
 from src.core.metric_positions import MetricResult, compute_metric_positions
 
 DEFAULT_TIRO_DEPTH_CM = 15.0  # banda (cm) frente a la línea que cuenta como tiro
@@ -148,6 +148,24 @@ def _nearest_to_goal(
     )
 
 
+def _predicted_only_ball_frames(result: MetricResult) -> set[int]:
+    """Frames donde el balón existe pero **todas** sus muestras son predichas (oclusión Kalman).
+
+    Una posición cuenta como *medida* si su ``source`` es ``None`` (cruda, T3), ``"measured"`` o
+    ``"gated"``; solo ``"predicted"`` es predicha. Con posiciones crudas (flag apagado) ``source``
+    es siempre ``None`` → el conjunto queda **vacío** y el comportamiento es idéntico al actual.
+    """
+    has_measured: set[int] = set()
+    has_any: set[int] = set()
+    for p in result.posiciones:
+        if p.cls not in BALL_CLASSES or p.xy_cm is None:
+            continue
+        has_any.add(p.frame_index)
+        if p.source != "predicted":
+            has_measured.add(p.frame_index)
+    return has_any - has_measured
+
+
 def _cm_series(
     ball_by_frame: dict[int, list[tuple[float, float]]],
     frames: list[int],
@@ -157,11 +175,15 @@ def _cm_series(
     side: float,
     goal_margin: float,
     gap_frames: int,
+    predicted_only: set[int] = frozenset(),
 ) -> tuple[list[tuple[int, bool]], dict[int, bool], dict[int, tuple[float, float] | None]]:
     """Serie ``near`` (en aproximación, con huecos fusionados), ``goal`` por frame y la muestra.
 
     ``near`` alimenta ``_events_from_series`` (segmenta lances); ``goal`` clasifica el intervalo
     (gol si alguna muestra cruzó la línea dentro de la boca); ``ref`` da la posición de cm.
+
+    ``predicted_only``: frames cuyo balón es solo-predicho (oclusión); el gol se **suprime** ahí
+    (conservador) — no se declara gol sobre un balón que no se vio. Vacío = sin efecto.
     """
     flags: list[tuple[int, bool, bool]] = []
     goal_by_frame: dict[int, bool] = {}
@@ -171,7 +193,7 @@ def _cm_series(
         n = _nearest_to_goal(ball_by_frame.get(f, []), zona)
         ref[f] = n
         present = n is not None
-        is_goal = present and _crossed_cm(n, zona, goal_margin)
+        is_goal = present and f not in predicted_only and _crossed_cm(n, zona, goal_margin)
         # un gol implica aproximación; si no, se evalúa la banda de tiro.
         in_app = present and (is_goal or _in_approach(n, zona, tiro_depth, side))
         goal_by_frame[f] = is_goal
@@ -219,6 +241,7 @@ def _compute_cm(
     ball_by_frame = _ball_by_frame(result)
     if not ball_by_frame:
         return []
+    predicted_only = _predicted_only_ball_frames(result)
     lo, hi = min(ball_by_frame), max(ball_by_frame)
     frames = list(range(lo, hi + 1))  # timeline contiguo (huecos = fuera)
     eventos: list[ShotGoalEvent] = []
@@ -226,7 +249,7 @@ def _compute_cm(
         near, goal_by_frame, ref = _cm_series(
             ball_by_frame, frames, zona,
             tiro_depth=tiro_depth_cm, side=side_cm, goal_margin=goal_margin_cm,
-            gap_frames=gap_frames,
+            gap_frames=gap_frames, predicted_only=predicted_only,
         )
         eventos += _classify(
             near, goal_by_frame, ref, zona,
