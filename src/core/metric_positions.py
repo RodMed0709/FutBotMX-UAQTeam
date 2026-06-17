@@ -1,14 +1,18 @@
 """T3 (fase_5 · Capa B) — posiciones métricas en cm.
 
 Proyecta robots y balón de un **JSON de tracking extendido** (``include_masks=True``) a
-**centímetros** sobre la cancha canónica (``field_template``), usando la homografía
-consolidada (camino C, ``auto_homography.VideoHomography``).
+**centímetros** sobre la cancha canónica (``field_template``), usando por defecto la homografía
+**por líneas** (``homography_multifeature.VideoHomographyLines``) — la consolidada y más fiable
+(error ~9–23 cm). El camino viejo **por máscaras** (``auto_homography.VideoHomography``) queda
+disponible como ``homography="masks"`` (legacy).
 
 Es la base de toda la Capa B (velocidad/distancia, heatmap, zonas, gol geométrico). NO
 re-infiere modelos: la alfombra (``green_floor``) y los centroides de portería se leen del
 propio JSON (vista ``frames[].detections`` con ``rle``); solo se leen los **píxeles del clip**
-para que ``solve_masks`` detecte las líneas blancas dentro de la alfombra. Corre en **CPU
-local** (I/O de video + ``pycocotools`` + ``cv2``; sin SAM3/YOLO).
+para detectar las líneas blancas dentro de la alfombra. En el camino por líneas el frame se
+**redimensiona a la resolución de la máscara de alfombra** antes de estimar la H (así los foot
+points del JSON, en esa misma resolución, se proyectan bien). Corre en **CPU local** (I/O de
+video + ``pycocotools`` + ``cv2``; sin SAM3/YOLO).
 
 Insumo de referencia: ``outputs/inference/fase5_clips/IMG_9933_5m30/IMG_9933_5m30.json``.
 Solo aplica a video de **cámara superior** (homografía fiable).
@@ -17,13 +21,14 @@ Solo aplica a video de **cámara superior** (homografía fiable).
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 
 from src.core.auto_homography import VideoHomography
 from src.core.homography import project_points
+from src.core.homography_multifeature import VideoHomographyLines
 from src.core.inference_schema import decode_rle
 from src.core.minimap_pipeline import (
     BLUE_CLASS,
@@ -49,6 +54,8 @@ class MetricPosition:
 class MetricResult:
     posiciones: list[MetricPosition]
     resumen: dict
+    # H px->cm usada en cada frame (None si no hubo H). Solo en memoria; no se serializa.
+    H_por_frame: dict[int, "np.ndarray | None"] = field(default_factory=dict)
 
 
 def _bbox_area(bbox) -> float:
@@ -115,15 +122,22 @@ def _resolve_clip(tracks_json: Path, data: dict, video: str | Path | None) -> Pa
 
 
 def _solve_homographies(
-    clip: Path, anchors: dict[int, dict], smooth_beta: float
-) -> tuple[dict[int, tuple], VideoHomography, int]:
+    clip: Path, anchors: dict[int, dict], smooth_beta: float, homography: str
+) -> tuple[dict[int, tuple], object, int]:
     """H por frame leyendo los píxeles del clip + alfombra/centroides del JSON. CPU local.
 
-    Returns ``(h_by_frame, vh, n_frames)`` con ``h_by_frame[idx] = (H | None, status)``.
+    ``homography`` ∈ {``"lines"`` (por líneas, default), ``"masks"`` (legacy por máscaras)}.
+    En el camino por líneas el frame se redimensiona a la resolución de la máscara de alfombra
+    antes de estimar la H. Returns ``(h_by_frame, vh, n_frames)`` con
+    ``h_by_frame[idx] = (H | None, status)``.
     """
     import cv2
 
-    vh = VideoHomography(smooth_beta=smooth_beta)
+    vh: object = (
+        VideoHomographyLines(smooth_beta=smooth_beta)
+        if homography == "lines"
+        else VideoHomography(smooth_beta=smooth_beta)
+    )
     cap = cv2.VideoCapture(str(clip))
     if not cap.isOpened():
         raise FileNotFoundError(f"no se pudo abrir el clip: {clip}")
@@ -135,15 +149,27 @@ def _solve_homographies(
             if not ok:
                 break
             a = anchors.get(idx)
-            if a is not None and a["carpet_rle"] is not None:
-                carpet = _largest_component(decode_rle(a["carpet_rle"]))
-                yc, bc = a["yc"], a["bc"]
+            if homography == "lines":
+                if a is not None and a["carpet_rle"] is not None:
+                    carpet = _largest_component(decode_rle(a["carpet_rle"]))
+                    hm, wm = carpet.shape[:2]
+                    same = frame.shape[:2] == (hm, wm)
+                    fr = frame if same else cv2.resize(frame, (wm, hm))
+                    H, status, _ov = vh.update(fr, carpet, a["yc"], a["bc"])
+                else:
+                    # sin alfombra -> conserva la H previa (o None si aún no hay).
+                    H, status = vh.H, ("kept" if vh.H is not None else "none")
+                h_by_frame[idx] = (H, status)
             else:
-                # sin green_floor en el frame -> máscara vacía: solve falla y VideoHomography
-                # propaga la H previa (status "propagated").
-                carpet = np.zeros(frame.shape[:2], dtype=np.uint8)
-                yc = bc = None
-            h_by_frame[idx] = vh.update_masks(frame, carpet, yc, bc)
+                if a is not None and a["carpet_rle"] is not None:
+                    carpet = _largest_component(decode_rle(a["carpet_rle"]))
+                    yc, bc = a["yc"], a["bc"]
+                else:
+                    # sin green_floor -> máscara vacía: solve falla y VideoHomography propaga la
+                    # H previa (status "propagated").
+                    carpet = np.zeros(frame.shape[:2], dtype=np.uint8)
+                    yc = bc = None
+                h_by_frame[idx] = vh.update_masks(frame, carpet, yc, bc)
             idx += 1
     finally:
         cap.release()
@@ -155,8 +181,15 @@ def compute_metric_positions(
     video: str | Path | None = None,
     *,
     smooth_beta: float = 0.4,
+    homography: str = "lines",
 ) -> MetricResult:
-    """Proyecta robots/balón a cm. ``video`` por defecto = clip junto al JSON."""
+    """Proyecta robots/balón a cm. ``video`` por defecto = clip junto al JSON.
+
+    ``homography`` ∈ {``"lines"`` (default, por líneas) | ``"masks"`` (legacy por máscaras)}.
+    """
+    if homography not in ("lines", "masks"):
+        raise ValueError(f"homography inválida: {homography!r} (usa 'lines' o 'masks')")
+
     tracks_json = Path(tracks_json)
     data = json.loads(tracks_json.read_text(encoding="utf-8"))
     fps = data.get("fps")
@@ -165,7 +198,9 @@ def compute_metric_positions(
     anchors = _load_field_anchors(data)
     clip = _resolve_clip(tracks_json, data, video)
 
-    h_by_frame, vh, n_frames = _solve_homographies(clip, anchors, smooth_beta)
+    h_by_frame, vh, n_frames = _solve_homographies(
+        clip, anchors, smooth_beta, homography
+    )
 
     posiciones: list[MetricPosition] = []
     for idx in sorted(frame_to_objs):
@@ -186,15 +221,21 @@ def compute_metric_positions(
         "clip_local": str(clip),
         "fps": fps,
         "n_frames": n_frames,
-        "n_estimated": vh.n_estimated,
-        "n_propagated": vh.n_propagated,
-        "n_rejected": vh.n_rejected,
+        "homography": homography,
         "pct_H_valida": round(100.0 * frames_con_H / n_frames, 1) if n_frames else 0.0,
         "n_posiciones": len(posiciones),
         "n_con_cm": n_con_cm,
-        "init_max_err_cm": vh.init_max_err_cm,
     }
-    return MetricResult(posiciones=posiciones, resumen=resumen)
+    if homography == "lines":
+        resumen["lines_stats"] = vh.stats()
+    else:
+        resumen["n_estimated"] = vh.n_estimated
+        resumen["n_propagated"] = vh.n_propagated
+        resumen["n_rejected"] = vh.n_rejected
+        resumen["init_max_err_cm"] = vh.init_max_err_cm
+
+    H_por_frame = {idx: H for idx, (H, _status) in h_by_frame.items()}
+    return MetricResult(posiciones=posiciones, resumen=resumen, H_por_frame=H_por_frame)
 
 
 def write_metric_positions_json(result: MetricResult, path: str | Path) -> Path:

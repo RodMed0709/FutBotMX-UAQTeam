@@ -33,7 +33,7 @@ from src.core.events_schema import events_paths
 from src.core.frame_extraction import get_video_fps, iter_frames
 from src.core.metric_heatmap import render_heatmap
 from src.core.metric_positions import compute_metric_positions
-from src.core.minimap import MinimapRenderer
+from src.core.minimap import CenitalMinimapRenderer, draw_field_overlay_on_frame
 
 DEFAULT_BANNER_SECS = 2.5
 DEFAULT_MAX_ITEMS = 6
@@ -260,9 +260,14 @@ def render_broadcast_overlay(
     out_fps: float | None = None,
     start_frame: int = 0,
     max_frames: int | None = None,
+    draw_field_on_video: bool = True,
     progress: bool = True,
 ) -> BroadcastResult:
-    """Renderiza el video de espectador. ``layout`` 1|2 (default 2); ``goal_source`` strict|geometric."""
+    """Renderiza el video de espectador. ``layout`` 1|2 (default 2); ``goal_source`` strict|geometric.
+
+    ``draw_field_on_video`` (default ``True``): reproyecta el campo (rectángulo + círculo) sobre el
+    video con la homografía por frame (homografía embebida). Se ignora en modo degradado.
+    """
     import cv2
 
     from src.core.video_writer import open_video_writer
@@ -301,7 +306,7 @@ def render_broadcast_overlay(
     mini_by_frame = _mini_by_frame(metric) if not degradado else {}
     if not degradado:
         grid, hm_by_frame = _live_heatmap_state(metric, bin_cm)
-        renderer = MinimapRenderer(trail_len=trajectory_window)
+        renderer = CenitalMinimapRenderer(trail_len=trajectory_window)
 
     items_all = _event_items(shot, viol)
     banner_frames = max(1, int(round(banner_secs * (fps or 30.0))))
@@ -322,6 +327,9 @@ def render_broadcast_overlay(
     with open_video_writer(out, fps=fps) as append:
         for fidx, frame_rgb in iter_frames(clip, max_frames=max_frames, start_frame=start_frame):
             vid = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+            # homografía embebida: reproyecta el campo sobre el video (a resolución completa)
+            if not degradado and draw_field_on_video:
+                draw_field_overlay_on_frame(vid, metric.H_por_frame.get(fidx))
             # marcador acumulado (fidx = índice del frame fuente, donde viven los eventos)
             ys = sum(1 for gf, z in goals if gf <= fidx and z == "yellow")
             bs = sum(1 for gf, z in goals if gf <= fidx and z == "blue")

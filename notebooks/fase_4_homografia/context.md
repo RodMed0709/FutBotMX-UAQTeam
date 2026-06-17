@@ -133,6 +133,19 @@ esquinas pintadas + rectángulo/círculo reproyectados sobre el video.
 - **Pro (3.7):** sumar métricas cuantitativas (velocidad cm/s, posesión) que la
   homografía métrica habilita.
 
+## Consolidación en `src` (HECHO)
+
+La **homografía por líneas** (`homography_multifeature.VideoHomographyLines`) es la
+consolidada y el camino por defecto de la **métrica T3**: `metric_positions.compute_metric_positions`
+ahora usa `homography="lines"` (redimensiona el frame a la resolución de la carpet-mask antes de
+estimar la H) y expone `H_por_frame`; el camino viejo por máscaras queda como `homography="masks"`
+(legacy). El **overlay de eventos** (`event_broadcast_overlay`) adopta esa homografía: minimapa
+cenital nuevo (`minimap.CenitalMinimapRenderer`), heatmap (`metric_heatmap.render_heatmap`) con el
+mismo estilo/orientación, y **homografía embebida** sobre el video (`draw_field_on_video=True`,
+reproyección rect+círculo). Demo reproducible desde `src` vía el notebook
+`fase_5_event_analysis/03_broadcast_overlay_demo.ipynb` (CPU local, consume `tracks_json` + `.mp4`).
+Referencia visual: `v2_07_minimap_polish_cenital.ipynb` (intacto).
+
 ## Pendiente / siguiente
 
 1. **Usar yolo_sam3 (fase_2) para los OBJETOS** (robots/balón) en vez del detector
@@ -141,8 +154,9 @@ esquinas pintadas + rectángulo/círculo reproyectados sobre el video.
 2. Decidir fuente de anclas de H: (a) método color robusto sobre el frame, o
    (b) SAM3 `green_floor` + extracción robusta de esquinas sobre las líneas blancas
    dentro de esa máscara. La opción (b) "usa SAM3" explícitamente.
-3. Integrar `VideoHomography` al `minimap_pipeline.py` del repo (reemplazar
-   `estimate_homography`, conservar objetos vía `tracks_json` de fase_2).
+3. `minimap_pipeline.render_minimap_video` (driver standalone del minimap) **sigue en el
+   camino viejo por máscaras** (`auto_homography.VideoHomography`); migrarlo a líneas si se
+   necesita ese mp4 (la métrica/overlay ya están en líneas).
 4. Correr NB12 depth en pod.
 5. Métricas cuantitativas sobre la H: velocidad cm/s, distancia, heatmap, posesión.
 6. `cv2.undistort` (barril). Mover módulos a repo `src/core`.

@@ -109,11 +109,18 @@ def render_heatmap(
     bin_cm: float,
     *,
     sigma_cm: float = DEFAULT_SIGMA_CM,
-    scale: float = 2.6,
+    scale: float = 2.2,
     margin_cm: float = 10.0,
     max_alpha: float = 0.8,
+    rotate: str | None = "cw",
 ) -> np.ndarray:
-    """Heatmap coloreado sobre la cancha canónica (imagen BGR)."""
+    """Heatmap coloreado sobre la cancha canónica (imagen BGR).
+
+    ``scale``/``margin_cm`` y la rotación vertical (``rotate="cw"``) por defecto igualan
+    el estilo del minimapa cenital (``minimap.CenitalMinimapRenderer``) para que ambos se
+    compongan coherentes en lados opuestos del overlay de eventos. ``rotate`` ∈
+    {``"cw"`` (default) | ``"ccw"`` | ``None``}.
+    """
     import cv2
 
     canvas, to_px = ft.render_field(scale=scale, margin_cm=margin_cm)
@@ -129,6 +136,10 @@ def render_heatmap(
 
     roi = canvas[y0:y1, x0:x1].astype(float)
     canvas[y0:y1, x0:x1] = (roi * (1 - alpha) + colored.astype(float) * alpha).astype(np.uint8)
+    if rotate == "cw":
+        canvas = cv2.rotate(canvas, cv2.ROTATE_90_CLOCKWISE)
+    elif rotate == "ccw":
+        canvas = cv2.rotate(canvas, cv2.ROTATE_90_COUNTERCLOCKWISE)
     return canvas
 
 
