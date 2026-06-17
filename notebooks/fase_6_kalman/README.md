@@ -1,9 +1,19 @@
 # Fase 6 — Kalman cm-Space State Estimation 🎯
 
-> **Estima dónde está el balón aunque no se vea.** Un filtro de Kalman explícito en
-> centímetros, encima de la homografía por líneas (nb07), que recupera posiciones ocluidas,
-> suaviza la velocidad y entrega incertidumbre calibrada — todo como capa de análisis, sin
-> re-hacer detección ni tracking.
+> ## *Estima dónde está el balón aunque no se vea.*
+> Filtro de Kalman en **centímetros** sobre la homografía por líneas (nb07): recupera posiciones
+> ocluidas, da velocidad **física** en cm/s y una incertidumbre que crece cuando el objeto
+> desaparece — sin re-hacer detección ni tracking.
+
+<p align="center">
+  <img src="../../assets/fase6/figures/IMG_9933_5m30_kalman_minimap.png" width="420"
+       alt="Minimap cenital: trayectoria Kalman (balón naranja, robots azul), detecciones crudas (gris) y círculos de incertidumbre en oclusión"/>
+  <br/><em>Trayectoria reconstruida en la cancha 243×182 cm. Los círculos rojos = incertidumbre creciendo donde el objeto está ocluido.</em>
+</p>
+
+### En una línea
+**Balón ocluido recuperado a ~2.6 cm** (mejor que extrapolación lineal) · velocidad **−99.5%** de
+ruido · **352 frames** de oclusión rellenados · y todo **alimenta los eventos sin tocar su código**.
 
 ---
 

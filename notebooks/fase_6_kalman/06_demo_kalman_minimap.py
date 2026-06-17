@@ -109,10 +109,15 @@ def main() -> None:
                 col = COLORS.get(cls, (200, 200, 200))
                 for d in lst:
                     oid = d.get("obj_id")
+                    # velocidad cm/s del estado Kalman en este frame (sigue al objeto)
+                    vtxt = ""
+                    st = by_obj.get(oid)
+                    if st is not None and f in st[1]:
+                        vtxt = f" {st[1][f].speed_cms:.0f}cm/s"
                     if d.get("bbox"):
                         x, y, w, hh = [int(v) for v in d["bbox"]]
                         cv2.rectangle(trk, (x, y), (x + w, y + hh), col, 2)
-                        cv2.putText(trk, f"{cls[:5]} #{oid}", (x, max(0, y - 4)),
+                        cv2.putText(trk, f"{cls[:5]} #{oid}{vtxt}", (x, max(0, y - 4)),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 1, cv2.LINE_AA)
                     if d.get("centroid") and oid is not None:
                         trails[oid].append((int(d["centroid"][0]), int(d["centroid"][1])))

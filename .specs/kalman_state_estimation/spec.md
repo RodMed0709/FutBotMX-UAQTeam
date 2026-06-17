@@ -148,6 +148,17 @@ aunque el sesgo absoluto de landmarks sea 9–23 cm. Calibrado (IMG_9933_5m30): 
   + cobertura en todos.
 - 2 clips cenitales → resultados por-track, sin generalización poblacional.
 
+## Evento pendiente: intervención humana (IMPORTANTE para el spec de eventos)
+
+Cuando una persona **agarra/toca el balón** (mano entra al campo), el tracker sigue mal: la mano
+ocluye y desplaza el balón de forma no-física → la velocidad/posición de esos frames es basura y
+NO debe entrar a las métricas (ni el KF debe "creerle"). Propuesta:
+- **Detectar intervención humana** (clase/prompt `hand`/`person`, o salto de velocidad >> gate aun
+  tras el Kalman) y marcar esos frames como `human_intervention` (inválidos).
+- En el KF, esos frames pasan como **gated** (predict-only) o se cortan el segmento; en las métricas
+  (velocidad, posesión, gol) se **excluyen**. Es un evento de la **Capa A** (relacional), va en el
+  spec de eventos del compañero alimentado por estos estados.
+
 ## Validación
 
 `testing/test_kalman_state.py` PASA 3/3 sobre trayectoria CV sintética: recuperación de velocidad,
