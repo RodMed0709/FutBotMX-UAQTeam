@@ -199,9 +199,14 @@ Cross-cutting facts worth knowing before editing:
   `v2_07_minimap_polish_cenital.ipynb`. **Consolidated:** the metric layer
   (`metric_positions`, default `homography="lines"`, resizing the frame to the carpet-mask
   resolution) and the spectator overlay now use the line-based homography; the mask path stays
-  as `homography="masks"` (legacy). **Still open:** `minimap_pipeline.render_minimap_video`
-  (the standalone minimap-video driver) is **still on the legacy mask path** — migrate only if
-  that mp4 is needed.
+  as `homography="masks"` (legacy). **Optional / deferred (low priority):**
+  `minimap_pipeline.render_minimap_video` (the standalone minimap-video driver) is **still on
+  the legacy mask path**. The delivered spectator video (`event_broadcast_overlay`) does **not**
+  use it — it renders its own cenital minimap from the line-based `metric_positions`, so the
+  consolidation is **closed for the deliverable**. `render_minimap_video` only feeds secondary
+  artifacts (the standalone `<stem>_minimap.mp4` + the old 5-panel `demo_overlay.compose_demo`
+  panel + `00_prepare_clips.py`). Migrate it to the line path **only** if those standalone
+  artifacts are still presented and need the ~9–23 cm accuracy; otherwise leave as-is.
 - **Match event analysis (fase_5) — IMPLEMENTED.** Goals/possession/zones/heatmaps in **real cm**,
   built **on top of** the fase_4 line-based homography output. The metric base is
   `metric_positions.compute_metric_positions` (cm + `H_por_frame`); event detectors are
