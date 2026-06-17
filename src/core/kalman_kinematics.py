@@ -18,15 +18,13 @@ from src.core.kalman_state import KFParams, KalmanState, run_kalman_on_track
 from src.core.metric_positions import MetricPosition, MetricResult, compute_metric_positions
 
 # Clases móviles (las estáticas green_floor/yellow_zone/blue_zone son anclas, se excluyen).
-# NOTA: estos params estan tuneados para ESPACIO DE IMAGEN (px), porque T3 (cm) esta roto
-# para los clips re-encodeados (ver 01_kalman_experiment.py). sigma_z=ruido de centroide (px),
-# sigma_a=ruido de aceleracion (px/s^2). Calibrados para NIS medio ~2 (ver T6.5). En cm,
-# re-tunear (sigma_z~15 del error de homografia 9-23 cm).
+# Params en CENTIMETROS (homografia por lineas, cm_positions_lines). sigma_z=15 del error de
+# homografia (9-23 cm); sigma_a = aceleracion fisica (balon acelera mas que robots), cm/s^2.
 CLASS_PARAMS: dict[str, KFParams] = {
-    "orange_ball": KFParams(sigma_a=300.0, sigma_z=8.0, max_gap_frames=15),
-    "robot_a": KFParams(sigma_a=600.0, sigma_z=20.0, max_gap_frames=30),
-    "robot_b": KFParams(sigma_a=600.0, sigma_z=20.0, max_gap_frames=30),
-    "robot": KFParams(sigma_a=600.0, sigma_z=20.0, max_gap_frames=30),  # fallback single-robot
+    "orange_ball": KFParams(sigma_a=800.0, sigma_z=15.0, max_gap_frames=15),
+    "robot_a": KFParams(sigma_a=250.0, sigma_z=15.0, max_gap_frames=30),
+    "robot_b": KFParams(sigma_a=250.0, sigma_z=15.0, max_gap_frames=30),
+    "robot": KFParams(sigma_a=250.0, sigma_z=15.0, max_gap_frames=30),  # fallback single-robot
 }
 
 

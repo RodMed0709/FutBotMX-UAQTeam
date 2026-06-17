@@ -17,21 +17,25 @@ from pathlib import Path
 
 import numpy as np
 
+import sys
+
 from src.core.kalman_kinematics import CLASS_PARAMS, compute_kalman_states
 from src.core.kalman_state import KalmanCV
 from src.core.metric_kinematics import compute_kinematics
-from src.core.metric_positions import MetricPosition, MetricResult
-from src.core.minimap_pipeline import _load_tracks_from_json
+from src.core.metric_positions import MetricResult, write_metric_positions_json
 
-# UNIDADES = PIXELES (espacio de imagen). El KF corre sobre los centroides del tracking JSON
-# directamente (sin homografia/video). La conversion a cm es via la homografia (T3, Ec. en el
-# paper); T3 esta roto para los clips re-encodeados del demo (RLE size != frame size), asi que
-# el experimento se hace en px: el aporte del KF (oclusion/suavizado/NIS) es unidad-agnostico.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from cm_positions_lines import compute_cm_positions_lines  # noqa: E402
+from src.core.kalman_kinematics import load_metric_result_from_json  # noqa: E402
+
+# UNIDADES = CENTIMETROS (homografia por lineas de Rodrigo, VideoHomographyLines/nb07).
+# Redimensiona el frame a la resolucion de la mascara -> arregla el size-mismatch que rompia
+# el auto_homography viejo. CPU local (lee .mp4, sin SAM3).
 REPO = Path("/workspace/FutBotMX-UAQTeam")
 CLIPS = [
-    REPO / "outputs/inference/fase5_clips/IMG_9933_5m30/IMG_9933_5m30.json",
-    REPO / "outputs/inference/fase5_clips/IMG_9938_min1/IMG_9938_min1.json",
     REPO / "outputs/inference/fase5_clips/IMG_9933_min1/IMG_9933_min1.json",
+    REPO / "outputs/inference/fase5_clips/IMG_9938_min1/IMG_9938_min1.json",
+    REPO / "outputs/inference/fase5_clips/IMG_9933_5m30/IMG_9933_5m30.json",
 ]
 OUT_TABLES = REPO / "assets" / "fase6" / "tables"
 OUT_T3 = REPO / "outputs" / "inference" / "fase6_kalman"
@@ -42,16 +46,13 @@ MOVING = set(CLASS_PARAMS) - {"robot"}  # clases que filtramos
 
 
 def get_metric_result(tracks_json: Path) -> MetricResult:
-    """Posiciones en PIXELES por (obj_id, frame) desde los centroides/foot del tracking JSON
-    (sin homografia/video). Espeja MetricResult para reusar el driver del KF."""
-    frame_to_objs, _max = _load_tracks_from_json(tracks_json)
-    fps = json.loads(tracks_json.read_text(encoding="utf-8")).get("fps") or 30.0
-    pos = []
-    for idx in sorted(frame_to_objs):
-        for obj_id, cls, foot in frame_to_objs[idx]:
-            pos.append(MetricPosition(obj_id, cls, int(idx),
-                                      (float(foot[0]), float(foot[1])), "estimated"))
-    return MetricResult(posiciones=pos, resumen={"fps": fps, "units": "px"})
+    """Posiciones en CM via homografia por lineas (VideoHomographyLines). Cachea junto al clip."""
+    cache = tracks_json.with_name(tracks_json.stem + "_cm_lines.json")
+    if cache.exists():
+        return load_metric_result_from_json(cache)
+    res = compute_cm_positions_lines(tracks_json)
+    write_metric_positions_json(res, cache)
+    return res
 
 
 def measured_series(result: MetricResult) -> dict[int, tuple[str, list]]:
