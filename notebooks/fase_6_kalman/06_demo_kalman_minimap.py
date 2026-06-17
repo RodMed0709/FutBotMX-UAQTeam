@@ -17,6 +17,7 @@ import numpy as np
 from src.core import field_template as ft
 from src.core.inference_schema import decode_rle
 from src.core.kalman_kinematics import compute_kalman_states, load_metric_result_from_json
+from src.core.metric_heatmap import render_heatmap  # el heatmap del compañero (solo se llama)
 from src.core.video_writer import open_video_writer
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -70,7 +71,7 @@ def main() -> None:
 
     # rejilla del heatmap (cm) + estado acumulado
     cols = int(np.ceil(ft.LENGTH_CM / HEAT_BIN)); rowsg = int(np.ceil(ft.WIDTH_CM / HEAT_BIN))
-    grid = np.zeros((rowsg, cols), float)
+    grid = np.zeros((rowsg, cols), float); grid[0, 0] = 1e-6  # seed -> render_heatmap tamaño constante
     trails = defaultdict(lambda: deque(maxlen=TRAIL))  # tracking px trails
 
     cap = cv2.VideoCapture(str(CLIP))
@@ -138,13 +139,8 @@ def main() -> None:
                     cx = min(max(s.xy_cm[0], 0), ft.LENGTH_CM - 1e-6); cy = min(max(s.xy_cm[1], 0), ft.WIDTH_CM - 1e-6)
                     grid[int(cy / HEAT_BIN), int(cx / HEAT_BIN)] += 1.0
 
-            # --- Heatmap homografía (nuestro, acumulado) ---
-            hm = base_field.copy()
-            if grid.max() > 0:
-                g = (255 * grid / grid.max()).astype(np.uint8)
-                gcol = cv2.applyColorMap(cv2.resize(g, (hm.shape[1], hm.shape[0])), cv2.COLORMAP_JET)
-                gcol = cv2.cvtColor(gcol, cv2.COLOR_BGR2RGB)
-                hm = (0.55 * hm + 0.45 * gcol).astype(np.uint8)
+            # --- Heatmap del COMPAÑERO (render_heatmap), alimentado con la rejilla Kalman ---
+            hm = cv2.cvtColor(render_heatmap(grid, HEAT_BIN, rotate=None), cv2.COLOR_BGR2RGB)
 
             cells = [_label(_fit(rgb, H), "Original"),
                      _label(_fit(seg, H), "Segmentacion"),

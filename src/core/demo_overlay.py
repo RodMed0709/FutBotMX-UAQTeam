@@ -165,14 +165,8 @@ def compose_demo(
     output_path: str | Path | None = None,
     max_seconds: float = 120.0,
     components: dict | None = None,
-    metric: MetricResult | None = None,
 ) -> Path:
-    """Ensambla el video demo (mosaico de componentes + panel de métricas + banner de gol).
-
-    ``metric``: si se pasa un ``MetricResult`` ya calculado (p.ej. posiciones suavizadas por el
-    Kalman de fase_6, o las cm por líneas), se usa en vez de re-correr T3 ``compute_metric_positions``
-    — así el panel de velocidad/heatmap se alimenta del estado Kalman. Default (None) = T3 como antes.
-    """
+    """Ensambla el video demo (mosaico de componentes + panel de métricas + banner de gol)."""
     import cv2
 
     from src.core.video_writer import open_video_writer
@@ -181,7 +175,7 @@ def compose_demo(
     panels = _resolve_components(tracks_json, components)
     if not panels:
         raise FileNotFoundError("no hay ningún componente para componer el demo")
-    metric = metric if metric is not None else compute_metric_positions(tracks_json)
+    metric = compute_metric_positions(tracks_json)
     metrics = _collect_metrics(tracks_json, metric, fps=None)
     fps = metrics["fps"] or get_video_fps(panels[0].path)
     max_frames = int(round(max_seconds * fps))
