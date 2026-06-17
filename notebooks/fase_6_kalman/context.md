@@ -33,9 +33,15 @@
 - **NIS aún no ≈2** (sigma_z=15 sobre-suaviza en 5m30: NIS 0.02). Refinamiento: tunear R por-clip
   (ablación 4f). No bloquea el hallazgo (KF > linear, velocidad plausible).
 
+## Ablación NIS + DESCUBRIMIENTO (03_kalman_ablation.py, params calibrados)
+- NIS sube al bajar σ_z. Innovaciones reales ~2 cm (ruido TEMPORAL de la homografía, no el sesgo
+  absoluto 9-23 cm). Calibrado: **σ_z=2**, σ_a=400 balón (NIS 1.24), σ_a=250 robot (NIS 2.54).
+- **DESCUBRIMIENTO (balístico vs maniobra):** con params calibrados, el **balón** (suave) → KF
+  VENCE a linear (2.65 vs 4.57 cm @ g=12); el **robot** (maniobra) → ninguna extrapolación con
+  velocidad vence a "hold" (KF 9.68 > linear 8.53 > hold 4.59). El modelo CV no sirve para un robot
+  que gira → motiva CA/IMM. El balón es el objeto crítico → KF aporta donde más importa.
+- v_max balón calibrado: T4 163.9 → KF 106.4 cm/s. Integración refrescada (goles 3→3, azul 87%).
+
 ## Próximos pasos
-1. Ablación `sigma_a/sigma_z` por NIS (por-clip) → afinar a NIS≈2.
-2. Para el paper: tabla T6.1 (KF vs linear vs hold, 9933) + T6.4 (velocidad plausible) +
-   framing honesto (hold fuerte en lento; KF gana entre métodos con velocidad + da incertidumbre).
-   Citar el KF interno del tracker (no over-claim).
-3. Figura: trayectoria con elipse de incertidumbre creciendo en el hueco.
+1. Modelo CA/IMM para robots (el descubrimiento lo motiva). 2. Demo T7: panel velocidad desde KF.
+3. Paper: T6.1 (balón KF>linear) + T6.4 + figura minimap/elipse + el descubrimiento honesto.

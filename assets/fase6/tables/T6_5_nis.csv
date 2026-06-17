@@ -1,7 +1,7 @@
 class,n,mean_nis,frac_gt_5.99,clip
-orange_ball,1797,0.02,0.0,IMG_9933_min1
-robot,5728,0.07,0.002,IMG_9933_min1
-orange_ball,839,14.59,0.132,IMG_9938_min1
-robot,4826,52.67,0.218,IMG_9938_min1
-orange_ball,1282,0.03,0.001,IMG_9933_5m30
-robot,5394,0.11,0.001,IMG_9933_5m30
+orange_ball,1797,1.09,0.042,IMG_9933_min1
+robot,5728,2.74,0.073,IMG_9933_min1
+orange_ball,839,119.91,0.319,IMG_9938_min1
+robot,4826,379.66,0.747,IMG_9938_min1
+orange_ball,1282,1.24,0.012,IMG_9933_5m30
+robot,5394,2.54,0.055,IMG_9933_5m30

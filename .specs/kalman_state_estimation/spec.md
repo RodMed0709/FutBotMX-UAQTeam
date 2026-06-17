@@ -113,25 +113,39 @@ compara contra la **detección verdadera escondida** (error euclidiano en cm). M
 - T6.5 consistencia NIS (`d²` medio; bien calibrado ≈ 2).
 - T6.6 métricas alimentadas por Kalman (zonas/goles/distancia: T3 crudo vs KF).
 
-## Resultados (IMG_9933_5m30, cenital fiable, 2026-06-16)
+## Ablación NIS (calibración de R, `03_kalman_ablation.py`)
 
-- **T6.1 — KF VENCE a la extrapolación lineal:** balón g=12 → KF **2.33 cm** vs linear 4.57 (hold
-  1.93); robot g=12 → KF **6.46 cm** vs linear 8.53 (hold 4.59). KF recupera ~2 cm (balón) / ~6 cm
-  (robot) en huecos de 12 frames (~0.4 s). "hold" gana en cenital lento (objetos casi no se mueven)
-  → matiz honesto; comparación justa = entre métodos CON velocidad (linear vs KF).
-- **T6.2 — suavidad −99.7 a −100%** de Var(aceleración) vs finite-diff.
-- **T6.4 — v_max balón:** T4 163.9 → **KF 133.9 cm/s** (suavizado, físicamente plausible ~1.3 m/s).
-- **T6.6 — integración:** alimentando Kalman a fase_5: goles **3 → 3** (consistente, no rompe), balón
-  mitad azul 86.9% → 86.5%, **352 frames de oclusión rellenados**. Minimap con trayectoria Kalman +
-  elipse de incertidumbre: `assets/fase6/figures/IMG_9933_5m30_kalman_minimap.png`.
+Se barre σ_z (R) y σ_a (Q) y se mide el NIS medio (consistente ≈ 2). NIS sube al bajar σ_z. Las
+**innovaciones reales son ~2 cm**: el ruido TEMPORAL (frame-a-frame) de la homografía es chico,
+aunque el sesgo absoluto de landmarks sea 9–23 cm. Calibrado (IMG_9933_5m30): **σ_z = 2 cm**,
+σ_a = 400 (balón, NIS **1.24**), σ_a = 250 (robot, NIS **2.54**). Ambos consistentes (NIS ~ 2 = dof).
+
+## Resultados (IMG_9933_5m30, cenital fiable, params NIS-calibrados)
+
+### DESCUBRIMIENTO: el balón gana, el robot no (dicotomía balístico vs maniobra)
+
+- **Balón (movimiento suave/balístico) — KF VENCE a la extrapolación lineal:**
+  g=12 → KF **2.65 cm** vs linear 4.57 (hold 1.93); g=5 → KF 1.61 vs linear 2.40. El KF recupera
+  el balón a ~2.6 cm en huecos de 12 frames (~0.4 s) y de-ruidiza la velocidad. NIS 1.24 (calibrado).
+- **Robot (maniobra impredecible) — ninguna extrapolación con velocidad vence a "hold":**
+  g=12 → KF 9.68, linear 8.53, **hold 4.59 (mejor)**. El modelo de **velocidad constante (CV) NO
+  modela un robot que gira/acelera**; extrapolar su velocidad (KF o lineal) es peor que congelar la
+  posición. NIS 2.54. **Hallazgo honesto y útil:** motiva un modelo de aceleración-constante (CA)
+  o IMM para robots — trabajo futuro.
+- **Implicación:** el balón es justo el objeto crítico (goles/posesión/velocidad de tiro), así que
+  el KF aporta donde más importa; en robots se reporta el límite del modelo CV.
+- **T6.2 — suavidad −99.5%** de Var(aceleración) vs finite-diff (balón y robot).
+- **T6.4 — v_max balón:** T4 163.9 → **KF 106.4 cm/s** (suavizado, físicamente plausible ~1.1 m/s).
+- **T6.6 — integración a fase_5:** goles **3 → 3** (consistente, no rompe), balón mitad azul
+  86.9% → 87.0%, **352 frames de oclusión rellenados**. Minimap con trayectoria Kalman + elipse de
+  incertidumbre: `assets/fase6/figures/IMG_9933_5m30_kalman_minimap.png`.
 
 ## Limitaciones (honestas)
 
-- `IMG_9938_min1` ruidoso (NIS 14–52, errores ~60 cm): su homografía por líneas es peor ahí →
-  reportar **9933**.
-- **NIS ≠ 2 aún** (σ_z=15 sobre-suaviza el 5m30, NIS ~0.02) → refinar R por-clip (ablación).
-- "hold" es fuerte en cenital lento; el KF gana entre métodos con velocidad y aporta velocidad +
-  incertidumbre + cobertura.
+- **CV limitado para robots que maniobran** (el descubrimiento de arriba) → CA/IMM a futuro.
+- `IMG_9938_min1` ruidoso (NIS alto, ~60 cm): su homografía por líneas es peor ahí → reportar **9933**.
+- "hold" es fuerte en cenital lento; el KF gana en el balón (suave) y aporta velocidad + incertidumbre
+  + cobertura en todos.
 - 2 clips cenitales → resultados por-track, sin generalización poblacional.
 
 ## Validación
