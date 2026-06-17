@@ -57,19 +57,29 @@ csv_dataset_metadata, forced_testing_split, eval_frame_export, gt_annotation
 (human/process task — no code), video_tracking, inference_schema, optional_render,
 unified_inference, batch_inference, obj_id_overlay; **YOLO integration:**
 sam3_box_prompt, yolo_detector, detector_strategy, botsort_tracker,
-batch_detector_tracker; **benchmark:** batch_timing, benchmark_metrics; and (this
-strand) detector_in_segmentation (pluggable detector in segmentation),
+batch_detector_tracker; **benchmark:** batch_timing, benchmark_metrics;
+detector_in_segmentation (pluggable detector in segmentation),
 config_aware_output_paths (`run_label` namespacing), progress_reporting (`tqdm` bars +
-`get_frame_count`).
+`get_frame_count`); **homography/metrics (fase_4/5):** field_homography,
+homografia_v2_robusta, homography_consolidation (overlay + metric layer adopt the
+line-based homography), metric_positions, metric_speed_distance, metric_field_zones,
+metric_heatmap; **event analysis (fase_5):** events_output_paths, event_goal_zone,
+event_goal_geometric, event_shot_vs_goal, event_possession, event_possession_refine,
+event_field_violations, event_broadcast_overlay, event_overlay_narrative; **Kalman
+(fase_6):** kalman_state_estimation; plus frame_window_sampling.
 
 Notebooks: `notebooks/cookbook_pipeline.ipynb` is the **API recipe book** (how to call
 every packaged function from your own notebook — start here before writing a new one);
 `notebooks/fase_3_benchmark_models/01_benchmark_detectors.ipynb` /
 `02_benchmark_trackers.ipynb` / `03_benchmark_analysis.ipynb` are the two-phase no-GT
 benchmark drivers + analysis; `notebooks/fase_4_homografia/` holds the field-homography +
-minimap strand (camera-superior input → metric top-down minimap with trails); `notebooks/
-fase_5_event_analysis/` is the planned match-analysis strand (zones/possession over tracks,
-built on the homography output); `notebooks/fase_0/` holds exploration spikes (SAM3) —
+minimap strand (camera-superior input → metric top-down minimap with trails — the
+`v2_*` notebooks are the current line, `v2_07_minimap_polish_cenital.ipynb` being the
+visual reference for the cenital minimap style); `notebooks/fase_5_event_analysis/` is
+the **implemented** match-analysis strand (cm positions, zones, possession, goals,
+heatmap and the spectator `03_broadcast_overlay_demo.ipynb`, built on the homography
+output); `notebooks/fase_6_kalman/` holds the Kalman state-estimation experiments
+(`.py` drivers, not `.ipynb`); `notebooks/fase_0/` holds exploration spikes (SAM3) —
 exploratory reference, **not** pipeline code. Production code lives under `src/`.
 
 ### Code architecture (the big picture)
@@ -110,11 +120,27 @@ conventions) and the modules compose into the two pipelines above:
     has `rle`. No SAM3, no re-inference; excludes configurable classes
     (`visualization.overlay_excluded_classes`, default `green_floor`). The live
     `overlay_detections` (mask fill by class) is untouched.
-  - `field_template.py` / `homography.py` / `minimap.py` / `minimap_pipeline.py` —
-    **fase_4 homography strand** (see the ongoing-processes note below): metric field
-    geometry, per-frame homography (SAM3-only path A), trails `MinimapRenderer`, and the
-    minimap driver. The working path (C, SAM3+YOLO) still lives in
-    `notebooks/fase_4_homografia/`, pending consolidation into `minimap_pipeline.py`.
+  - **fase_4 homography strand** — `field_template.py` (metric field geometry, 243×182 cm),
+    `field_landmarks.py` (named cm landmarks/lines), `homography.py` (SAM3-only path A +
+    `project_points`), `auto_homography.py` (`VideoHomography`, color/mask path C, legacy),
+    `homography_multifeature.py` (`VideoHomographyLines` — the **current/best** line-based
+    homography), `minimap.py` (`MinimapRenderer` generic + `CenitalMinimapRenderer` polished
+    cenital style + `draw_field_overlay_on_frame`), `minimap_pipeline.py` (standalone minimap
+    video driver — **still on the legacy mask path**). The line-based homography is the
+    consolidated one; see the ongoing-processes note.
+  - **fase_5 metric/event layer (Capa B, CPU-local, reads the tracking JSON, no SAM3/GPU):**
+    `metric_positions.py` (`compute_metric_positions(..., homography="lines"|"masks")` →
+    cm positions + `H_por_frame`; the shared base of the layer), `metric_kinematics.py` /
+    `metric_field_zones.py` / `metric_heatmap.py` (speed/distance, zones, occupancy heatmap in
+    cm), and the event detectors `event_shot_goal.py` (strict goal vs shot),
+    `event_possession_refine.py` (possession vs control), `event_field_violations.py`
+    (out-of-bounds / area / pushing), `event_goal_geometric.py`, `events_schema.py`
+    (`events_paths`), and `event_broadcast_overlay.py` (the spectator showpiece overlay:
+    scoreboard, sliding goal banner, possession panel, event feed, embedded homography +
+    cenital minimap + heatmap).
+  - **fase_6 Kalman:** `kalman_state.py` (from-scratch constant-velocity 2D KF with occlusion
+    predict-only + Mahalanobis gating), `kalman_kinematics.py` (driver consuming T3 metric
+    positions per obj_id).
 - **`src/data/` — dataset preparation (not inference):**
   - `metadata.py::build_metadata_csv` → `assets/db_metadata.csv` manifest with a
     reproducible `split` column (0=reserve, 1=fine-tuning [23], 2=testing [20];
@@ -165,17 +191,33 @@ Cross-cutting facts worth knowing before editing:
   convocatoria 3.7.3 + 3.5.2). Input must be the **camera-superior** footage (full field;
   Meta-Glasses portrait won't work). New `src/core/` modules: `field_template.py`,
   `homography.py`, `minimap.py`, `minimap_pipeline.py`; config gained a `blue_zone` class.
-  **Three paths exist** (see `notebooks/fase_4_homografia/context.md` for the full log):
-  A = SAM3-only (`src/core/homography.py`, `green_floor` quad — measured *unreliable* at the
-  carpet edge, `_refine` tried-and-fails); B = color-auto (`auto_homography.py`, local, inner
-  white-line rectangle, ~85% ok / ~12 cm, passed adversarial review); **C = SAM3+YOLO
-  integrated (`pod_minimap_sam3.py`, pod GPU) — the chosen path for Profesional**, 5 demo
-  videos, 9–23 cm error. **Open:** consolidate path C's `VideoHomography`/`solve_masks` into
-  the repo's `minimap_pipeline.py` (today still on path A) feeding objects from fase_2
-  `tracks_json`. Quantitative metrics belong to fase_5, not here.
-- **Match event analysis (fase_5) — PLANNED.** Goals/possession/zones/heatmaps in **real cm**,
-  built **on top of** the fase_4 homography output (renamed from the old `fase_4_event_analysis`).
-  Not started in code.
+  **Multiple paths existed** (see `notebooks/fase_4_homografia/context.md` for the full log):
+  A = SAM3-only (`homography.py`, `green_floor` quad — unreliable at the carpet edge);
+  B = color-auto (`auto_homography.py`, inner white-line rectangle); C = SAM3+YOLO mask-based
+  (`auto_homography.VideoHomography`); and the **current/best = line-based**
+  (`homography_multifeature.VideoHomographyLines`, ~9–23 cm), demoed in
+  `v2_07_minimap_polish_cenital.ipynb`. **Consolidated:** the metric layer
+  (`metric_positions`, default `homography="lines"`, resizing the frame to the carpet-mask
+  resolution) and the spectator overlay now use the line-based homography; the mask path stays
+  as `homography="masks"` (legacy). **Still open:** `minimap_pipeline.render_minimap_video`
+  (the standalone minimap-video driver) is **still on the legacy mask path** — migrate only if
+  that mp4 is needed.
+- **Match event analysis (fase_5) — IMPLEMENTED.** Goals/possession/zones/heatmaps in **real cm**,
+  built **on top of** the fase_4 line-based homography output. The metric base is
+  `metric_positions.compute_metric_positions` (cm + `H_por_frame`); event detectors are
+  `event_shot_goal` (strict goal vs shot), `event_possession_refine` (possession vs control),
+  `event_field_violations` (out/area/pushing), plus `metric_field_zones`/`metric_heatmap`.
+  Deliverable: `event_broadcast_overlay.render_broadcast_overlay` (spectator video) reproduced
+  via `notebooks/fase_5_event_analysis/03_broadcast_overlay_demo.ipynb` (CPU-local, consumes
+  the tracking JSON + the **raw** clip — note the `<stem>.mp4` under `outputs/inference/` is the
+  *segmented* tracking video; use the raw cut clip from `00_prepare_clips.py` to avoid burnt-in
+  masks). Reference clip: `IMG_9933_5m30`. **Open candidate:** `event_goal_geometric` is lax
+  (false positives); the overlay defaults to the strict source.
+- **Kalman state estimation (fase_6) — EXPERIMENTAL.** `kalman_state.py` (from-scratch CV KF,
+  validated 3/3 in `testing/test_kalman_state.py`) + `kalman_kinematics.py` over the cm metric
+  positions; experiments and tables under `notebooks/fase_6_kalman/` and `assets/fase6/`. KF
+  beats linear extrapolation through occlusions; reliable clip is `IMG_9933`. See its
+  `context.md` for the honest log (NIS tuning pending).
 
 **Pending / TODO (not yet done):**
 - **Clean up `testing/` scripts to drop the `sys.path` patch.** `src` is now an
@@ -289,11 +331,18 @@ This is the literal protocol from constitution §8. Work and documents are in **
 ### Running the test scripts
 
 `testing/` holds standalone manual scripts (run directly, not via pytest) — there is
-roughly one `test_*.py` per module (`test_env`, `test_abs_dir_func`,
+roughly one `test_*.py` per module: base pipeline (`test_env`, `test_abs_dir_func`,
 `test_frame_extraction`, `test_metadata`, `test_eval_frame_export`, `test_sam3_loader`,
 `test_segmentation`, `test_overlay`, `test_video_writer`, `test_pipeline`,
 `test_tracking`, `test_optional_render`, `test_unified_inference`,
-`test_batch_inference`, `test_obj_id_overlay`):
+`test_batch_inference`, `test_obj_id_overlay`), YOLO/benchmark (`test_box_prompt`,
+`test_yolo_detector`, `test_detector_strategy`, `test_botsort_tracker`,
+`test_benchmark_metrics`), homography/metrics (`test_metric_positions`,
+`test_metric_heatmap`, `test_metric_field_zones`, `test_metric_speed_distance`,
+`test_homografia_comparativa`), events (`test_event_shot_vs_goal`,
+`test_event_possession_refine`, `test_event_field_violations`,
+`test_event_broadcast_overlay`, `test_events_output_paths`, …), and Kalman
+(`test_kalman_state`):
 ```bash
 python testing/test_env.py             # imports + versions + torch.cuda check
 python testing/test_abs_dir_func.py    # exercises get_abs_path against the configs
