@@ -36,7 +36,7 @@ FRAMES_OUT = REPO / "data" / "extra300_frames"   # PNG extraidos (git-ignored)
 SAM3_PATH = REPO / "assets" / "sam3"
 ENV_FILE = Path("/workspace/.env")
 
-PROJECT_NAME = "FutBot_Extra_300_blue_smoothv3_tta"
+PROJECT_NAME = "FutBot_Extra_300_lora_classes"
 DATASET_NAME = "extra_300"
 JOB_NAME = "ARIEL"
 MIN_AREA = 100
@@ -44,13 +44,16 @@ IOU_MATCH = 0.3
 MIN_VOTES = 2
 GAMMA = 0.8
 
-# 5 clases = las 4 de los 600 + blue_zone (prompt/color de configs/01_yolo_sam3_config.json)
+# 6 clases EXACTAS del dataset LoRA (notebooks/fase_5_lora/dataset/meta.json): mismos
+# nombres y colores. `prompt=None` => la clase existe en el meta para anotar a mano pero
+# SAM3 NO la pre-segmenta (robot_b: el equipo se asigna a mano; SAM3 no distingue equipo).
 CLASSES = [
-    {"name": "robot", "prompt": "robot", "color": [60, 130, 255]},
-    {"name": "orange_ball", "prompt": "orange ball", "color": [255, 100, 0]},
-    {"name": "green_floor", "prompt": "green playing surface with lines", "color": [50, 220, 70]},
-    {"name": "yellow_zone", "prompt": "yellow zone", "color": [255, 230, 0]},
-    {"name": "blue_zone", "prompt": "dark blue rectangle", "color": [30, 90, 220]},
+    {"name": "orange_ball", "prompt": "orange ball", "color": [255, 100, 0]},       # #FF6400
+    {"name": "robot_a", "prompt": "robot", "color": [219, 0, 255]},                 # #DB00FF (todos los robots)
+    {"name": "robot_b", "prompt": None, "color": [230, 30, 200]},                   # #E61EC8 (reasignar a mano)
+    {"name": "green_floor", "prompt": "green playing surface with lines", "color": [50, 220, 70]},  # #32DC46
+    {"name": "yellow_zone", "prompt": "yellow zone", "color": [255, 230, 0]},        # #FFE600
+    {"name": "blue_zone", "prompt": "blue board", "color": [74, 144, 226]},          # #4A90E2 (SAM3 débil ~8%)
 ]
 
 
@@ -230,6 +233,9 @@ def main() -> None:
             labels = []
             counts = {}
             for cls in CLASSES:
+                if not cls["prompt"]:        # clase solo-manual (p.ej. robot_b): no auto-segmenta
+                    counts[cls["name"]] = 0
+                    continue
                 res = tta_class_masks(model, processor, img, cls["prompt"], device)
                 finals = merge_tta(res)
                 n = 0
