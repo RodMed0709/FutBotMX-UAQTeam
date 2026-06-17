@@ -41,6 +41,44 @@ def _point_color(obj_id: int, class_name: str) -> tuple[int, int, int]:
     return _ROBOT_PALETTE[obj_id % len(_ROBOT_PALETTE)]
 
 
+def draw_field_overlay(
+    frame: np.ndarray,
+    H: np.ndarray | None,
+    corners: np.ndarray | None = None,
+) -> np.ndarray:
+    """Reproyecta la cancha sobre el frame del video para confirmar la homografia.
+
+    Con ``H`` (img->cm) dibuja, vía ``H^-1``, el **rectangulo interior** (verde) y el
+    **circulo central** (cian) en coordenadas de imagen; si se pasan ``corners`` (las 4
+    esquinas detectadas en la imagen), las marca en azul. Replica ``draw_field_overlay``
+    de la demo (camino C). Colores en convencion **RGB** (lo que entrega ``iter_frames``).
+    Dibuja in place sobre ``frame`` y lo devuelve. ``cv2`` perezoso.
+    """
+    import cv2
+
+    out = frame
+    b = ft.LINE_BORDER_CM
+    if H is not None:
+        Hinv = np.linalg.inv(H)
+
+        def c2i(p: tuple[float, float]) -> tuple[int, int]:
+            q = cv2.perspectiveTransform(np.array([[p]], np.float32), Hinv).reshape(2)
+            return int(q[0]), int(q[1])
+
+        inner = [(b, b), (ft.LENGTH_CM - b, b),
+                 (ft.LENGTH_CM - b, ft.WIDTH_CM - b), (b, ft.WIDTH_CM - b)]
+        cv2.polylines(out, [np.array([c2i(p) for p in inner], np.int32)], True,
+                      (0, 255, 0), 3, cv2.LINE_AA)
+        circ = [c2i((ft.CENTER_CM[0] + ft.CIRCLE_RADIUS_CM * np.cos(t),
+                     ft.CENTER_CM[1] + ft.CIRCLE_RADIUS_CM * np.sin(t)))
+                for t in np.linspace(0, 2 * np.pi, 40)]
+        cv2.polylines(out, [np.array(circ, np.int32)], True, (0, 255, 255), 2, cv2.LINE_AA)
+    if corners is not None:
+        for p in np.asarray(corners).astype(int):
+            cv2.circle(out, (int(p[0]), int(p[1])), 13, (255, 0, 0), -1, cv2.LINE_AA)
+    return out
+
+
 def orientation_k(field_center: tuple[float, float], goal_center: tuple[float, float]) -> int:
     """Cuantas rotaciones de 90deg (CCW, ``np.rot90``) alinear el minimap con la imagen.
 
@@ -63,10 +101,10 @@ class MinimapRenderer:
 
     def __init__(
         self,
-        scale: float = 2.2,
-        margin_cm: float = 10.0,
+        scale: float = 2.6,
+        margin_cm: float = 3.0,
         trail_len: int = 64,
-        panel_width_frac: float = 0.38,
+        panel_width_frac: float = 0.34,
         trail_persist: int = 24,
     ) -> None:
         """Inicializa el renderer.
@@ -139,7 +177,12 @@ class MinimapRenderer:
             self._last_seen.pop(oid, None)
 
     def render(self) -> np.ndarray:
-        """Dibuja el minimap del estado actual (cancha + trails + posicion actual)."""
+        """Dibuja el minimap del estado actual (cancha + trails + marcadores).
+
+        Replica el render de la demo (camino C): el **balon** es un circulo naranja;
+        los **robots** son un **cuadro gris** (marcador uniforme). El **trail** sigue la
+        paleta por ``obj_id`` (robots) / naranja (balon) para distinguir trayectorias.
+        """
         import cv2
 
         canvas = self._base.copy()
@@ -147,18 +190,20 @@ class MinimapRenderer:
             if not trail:
                 continue
             class_name = self._class_of.get(obj_id, "robot")
-            color = _point_color(obj_id, class_name)
-
+            color = _point_color(obj_id, class_name)  # color del trail
             pts = [self._to_px(p) for p in trail]
+            x, y = pts[-1]
             if len(pts) >= 2:
                 cv2.polylines(
-                    canvas, [np.array(pts, dtype=np.int32)], False, color, 3, cv2.LINE_AA
+                    canvas, [np.array(pts, dtype=np.int32)], False, color, 2, cv2.LINE_AA
                 )
-            # Posicion actual (marcador mas grande para el balon).
-            is_ball = class_name in _BALL_CLASSES
-            r = 10 if is_ball else 8
-            cv2.circle(canvas, pts[-1], r, color, -1, cv2.LINE_AA)
-            cv2.circle(canvas, pts[-1], r, (20, 20, 20), 2, cv2.LINE_AA)
+            if class_name in _BALL_CLASSES:
+                cv2.circle(canvas, (x, y), 12, _BALL_COLOR, -1, cv2.LINE_AA)
+                cv2.circle(canvas, (x, y), 12, (20, 20, 20), 2, cv2.LINE_AA)
+            else:
+                s = 14
+                cv2.rectangle(canvas, (x - s, y - s), (x + s, y + s), (175, 175, 175), -1)
+                cv2.rectangle(canvas, (x - s, y - s), (x + s, y + s), (35, 35, 35), 2)
         if self._rotate_k:
             canvas = np.ascontiguousarray(np.rot90(canvas, self._rotate_k))
         return canvas
@@ -194,3 +239,131 @@ class MinimapRenderer:
         cv2.rectangle(out, (x0 - 2, y0 - 2), (x1 + 1, y1 + 1), (255, 255, 255), 2)
         out[y0:y1, x0:x1] = mini_rs
         return out
+
+
+# --- estilo cenital pulido (v2_07) ---------------------------------------------
+_CENITAL_ROBOT_COLOR = (255, 0, 0)        # rojo (RGB)
+_CENITAL_BALL_COLOR = (255, 140, 0)       # naranja (RGB)
+_CENITAL_YELLOW_GOAL = (255, 230, 0)      # barra porteria amarilla (RGB)
+_CENITAL_BLUE_GOAL = (40, 120, 255)       # barra porteria azul (RGB)
+
+
+class CenitalMinimapRenderer:
+    """Minimap cenital pulido (estilo v2_07): cancha vertical con porterias anchas por
+    color, robots en rojo / balon en naranja como circulos llenos, y estelas por
+    ``obj_id``.
+
+    General y parametrizable (cualquier video). Mismo flujo de uso que
+    ``MinimapRenderer`` (``update`` -> ``render``); ``render`` devuelve RGB ya rotado a
+    vista vertical. La geometria de porterias se deriva de ``field_template`` (sin
+    hardcode disperso).
+    """
+
+    def __init__(
+        self,
+        scale: float = 2.2,
+        margin_cm: float = 10.0,
+        trail_len: int = 40,
+        robot_color: tuple[int, int, int] = _CENITAL_ROBOT_COLOR,
+        ball_color: tuple[int, int, int] = _CENITAL_BALL_COLOR,
+        goal_bar_depth_cm: float = 18.0,
+        trail_persist: int = 24,
+        rotate: str | None = "cw",
+    ) -> None:
+        """Inicializa el renderer cenital.
+
+        Args:
+            scale: pixeles por cm del minimap.
+            margin_cm: margen alrededor de la alfombra.
+            trail_len: posiciones recientes por trail.
+            robot_color / ball_color: colores RGB de marcadores y estelas.
+            goal_bar_depth_cm: profundidad (en cm) de la barra de cada porteria.
+            trail_persist: frames sin actualizar tras los que se purga un trail.
+            rotate: ``"cw"`` (vertical, default) | ``"ccw"`` | ``None`` (horizontal).
+        """
+        self._base, self._to_px = ft.render_field(scale=scale, margin_cm=margin_cm)
+        self._trail_len = trail_len
+        self._robot_color = robot_color
+        self._ball_color = ball_color
+        self._goal_depth = goal_bar_depth_cm
+        self._trail_persist = trail_persist
+        self._rotate = rotate
+        self._trails: dict[int, deque] = defaultdict(lambda: deque(maxlen=trail_len))
+        self._class_of: dict[int, str] = {}
+        self._last_seen: dict[int, int] = {}
+        self._frame: int = 0
+
+    def _color_for(self, class_name: str) -> tuple[int, int, int]:
+        return self._ball_color if class_name in _BALL_CLASSES else self._robot_color
+
+    def update(self, projected: list[tuple[int, str, float, float]]) -> None:
+        """Agrega posiciones proyectadas (cm) de este frame a los trails."""
+        self._frame += 1
+        x_lim = (-ft.LENGTH_CM, 2 * ft.LENGTH_CM)
+        y_lim = (-ft.WIDTH_CM, 2 * ft.WIDTH_CM)
+        for obj_id, class_name, x_cm, y_cm in projected:
+            if not (x_lim[0] <= x_cm <= x_lim[1] and y_lim[0] <= y_cm <= y_lim[1]):
+                continue
+            self._trails[obj_id].append((x_cm, y_cm))
+            self._class_of[obj_id] = class_name
+            self._last_seen[obj_id] = self._frame
+
+        stale = [
+            oid for oid, seen in self._last_seen.items()
+            if self._frame - seen > self._trail_persist
+        ]
+        for oid in stale:
+            self._trails.pop(oid, None)
+            self._class_of.pop(oid, None)
+            self._last_seen.pop(oid, None)
+
+    def _draw_goal_bars(self, canvas: np.ndarray) -> None:
+        import cv2
+
+        d = self._goal_depth
+        top, bot = ft._GOAL_TOP_Y_CM, ft._GOAL_BOTTOM_Y_CM
+        bars = [
+            ((0.0, top), (d, bot), _CENITAL_YELLOW_GOAL),
+            ((ft.LENGTH_CM - d, top), (ft.LENGTH_CM, bot), _CENITAL_BLUE_GOAL),
+        ]
+        for (x0, y0), (x1, y1), col in bars:
+            cv2.rectangle(canvas, self._to_px((x0, y0)), self._to_px((x1, y1)), col, -1)
+            cv2.rectangle(canvas, self._to_px((x0, y0)), self._to_px((x1, y1)),
+                          (255, 255, 255), 1)
+
+    def render(self) -> np.ndarray:
+        """Dibuja el minimap cenital (cancha + porterias + estelas + marcadores) y lo
+        rota a vista vertical. Devuelve RGB."""
+        import cv2
+
+        canvas = self._base.copy()
+        self._draw_goal_bars(canvas)
+        # estelas (todas las vivas)
+        for obj_id, trail in self._trails.items():
+            if len(trail) < 2:
+                continue
+            col = self._color_for(self._class_of.get(obj_id, "robot"))
+            pts = np.array([self._to_px(p) for p in trail], dtype=np.int32)
+            cv2.polylines(canvas, [pts], False, col, 2, cv2.LINE_AA)
+        # marcadores (solo objetos vistos este frame)
+        for obj_id, seen in self._last_seen.items():
+            if seen != self._frame or not self._trails[obj_id]:
+                continue
+            cls = self._class_of.get(obj_id, "robot")
+            col = self._color_for(cls)
+            x, y = self._to_px(self._trails[obj_id][-1])
+            r = 9 if cls not in _BALL_CLASSES else 7
+            cv2.circle(canvas, (x, y), r, col, -1, cv2.LINE_AA)
+            cv2.circle(canvas, (x, y), r, (255, 255, 255), 1, cv2.LINE_AA)
+        if self._rotate == "cw":
+            canvas = cv2.rotate(canvas, cv2.ROTATE_90_CLOCKWISE)
+        elif self._rotate == "ccw":
+            canvas = cv2.rotate(canvas, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        return canvas
+
+
+def draw_field_overlay_on_frame(frame: np.ndarray, H: np.ndarray | None) -> np.ndarray:
+    """Reproyecta el campo (rectangulo interior + circulo central) sobre el frame del
+    video usando la homografia ``H`` (img->cm). No-op si ``H is None``. Alias delgado
+    de ``draw_field_overlay`` para el overlay de eventos (homografia embebida)."""
+    return draw_field_overlay(frame, H)

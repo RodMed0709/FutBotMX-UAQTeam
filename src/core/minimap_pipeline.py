@@ -1,17 +1,24 @@
 """Driver de fase_4: video -> homografia por frame -> minimap con trayectorias.
 
-Orquesta las piezas de fase_4:
+Orquesta las piezas de fase_4, **agnostico al pipeline de segmentacion**: las
+detecciones (anclas y objetos) salen del **detector pluggable** del repo
+(``get_detector(detector)`` -> ``sam3_text`` | ``yolo_sam3``), no de llamadas SAM3
+hardcodeadas. Asi se puede comparar la homografia entre ambos pipelines flipeando un
+parametro, y el modulo reusa la misma abstraccion que ``track_video``/``run_inference``.
 
-1. **Trayectorias** de robots y balon: se reusan de un JSON de tracking ya
-   generado (``tracks_json``, salida de ``track_video``) o, si no se da, se
-   detectan y se siguen **en el mismo paso** con un tracker greedy por vecino mas
-   cercano (autocontenido, sin dependencias externas de tracking). De cada objeto
-   se toma el **punto de contacto con el piso** (centro-inferior de la caja para
-   robots; centroide para el balon).
-2. **Homografia por frame**: se segmentan con SAM3-texto las anclas
-   (``green_floor``, ``yellow_zone``, ``blue_zone``) y se estima ``H`` con
-   ``src.core.homography``.
-3. **Render**: se proyectan las posiciones al campo y se dibujan como trails en el
+1. **Anclas de homografia** (por frame): del dict de detecciones se toma la mascara de
+   ``green_floor`` (alfombra) y los centroides de ``yellow_zone``/``blue_zone``
+   (orientacion). Con ``yolo_sam3`` YOLO localiza **las dos porterias** (azul incluida)
+   -> orientacion firme; con ``sam3_text`` la azul suele faltar.
+2. **Homografia** (camino C): ``src.core.auto_homography.VideoHomography.update_masks``
+   estima ``H`` (img->cm) sobre el rectangulo interior de lineas + orientacion por
+   porteria, con lock de arranque, gate de consistencia temporal, EMA y propagacion.
+3. **Objetos/trayectorias** de robots y balon: de un JSON de tracking ya generado
+   (``tracks_json``, salida de cualquier config 2x2) o, si no se da, del mismo dict de
+   detecciones seguido con un tracker greedy por vecino mas cercano (autocontenido). De
+   cada objeto se toma el **punto de contacto con el piso** (centro-inferior de la caja
+   para robots; centroide para el balon).
+4. **Render**: se proyectan las posiciones al campo y se dibujan como trails en el
    minimap (``src.core.minimap``), compuesto sobre cada frame y escrito a un mp4.
 
 El JSON de tracking y los frames del video se recorren con el **mismo** muestreo
@@ -25,43 +32,26 @@ from pathlib import Path
 
 import numpy as np
 
+from src.core.auto_homography import VideoHomography  # camino C
+from src.core.detectors import detect_boxes, get_detector
 from src.core.frame_extraction import get_frame_count, get_video_fps, iter_frames
-from src.core.homography import (
-    FrameHomography,
-    HomographyState,
-    estimate_homography,
-    mask_centroid,
-    project_points,
-)
+from src.core.homography import mask_centroid, project_points
 from src.core.inference_schema import mask_to_bbox_centroid
-from src.core.minimap import MinimapRenderer
-from src.core.overlay import overlay_detections
+from src.core.minimap import MinimapRenderer, draw_field_overlay
 from src.core.sam3_loader import Sam3Bundle, load_sam3
 from src.core.segmentation import _load_classes, segment_with_text
 from src.core.video_writer import open_video_writer
 from src.utils import PROJECT_ROOT
 
+# Detectores de anclas/objetos validos para el minimap.
+_DETECTORS = ("sam3_text", "yolo_sam3", "yolo")
+
 FIELD_CLASS = "green_floor"
 YELLOW_CLASS = "yellow_zone"
 BLUE_CLASS = "blue_zone"
 ROBOT_CLASS = "robot"
+BALL_CLASS = "orange_ball"
 BALL_CLASSES = {"orange_ball", "ball"}
-
-_DEFAULT_PROMPTS = {
-    FIELD_CLASS: "green playing surface with lines",
-    YELLOW_CLASS: "yellow zone",
-    BLUE_CLASS: "blue zone",
-    ROBOT_CLASS: "robot",
-    "orange_ball": "orange ball",
-}
-
-
-def _prompt_for(class_name: str, classes: list[dict]) -> str:
-    """Prompt SAM3 de una clase: el de la config si existe, si no el default."""
-    for c in classes:
-        if c["name"] == class_name and c.get("sam3_prompts"):
-            return c["sam3_prompts"][0]
-    return _DEFAULT_PROMPTS.get(class_name, class_name)
 
 
 def _largest_mask(dets: list) -> np.ndarray | None:
@@ -72,6 +62,24 @@ def _largest_mask(dets: list) -> np.ndarray | None:
         if area > best_area:
             best, best_area = d.mask, area
     return best
+
+
+def _largest_component(mask: np.ndarray) -> np.ndarray:
+    """Mayor componente conexo de una mascara booleana.
+
+    Limpia blobs sueltos que SAM3 puede colar en ``green_floor`` (reflejos, una
+    muñequera verde fuera del campo): si entran, la alfombra se ensancha y
+    ``inner_corners`` ajusta un rectangulo mas grande -> homografia con mala escala.
+    Espeja ``pod_minimap_sam3.largest_component`` (la demo).
+    """
+    import cv2
+
+    m = (mask > 0).astype(np.uint8)
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(m)
+    if n <= 1:  # sin componentes (solo fondo)
+        return m.astype(bool)
+    largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    return labels == largest
 
 
 def _foot_point(class_name: str, bbox) -> tuple[float, float]:
@@ -128,18 +136,42 @@ class _GreedyTracker:
         return out
 
 
-def _detect_objects(frame, robot_prompt, ball_prompt, bundle):
-    """Detecta robots y balon en un frame -> lista de ``(class, foot_xy)``."""
-    dets: list[tuple[str, tuple[float, float]]] = []
-    for d in segment_with_text(frame, robot_prompt, bundle):
-        geom = mask_to_bbox_centroid(d.mask)
-        if geom is not None:
-            dets.append((ROBOT_CLASS, _foot_point(ROBOT_CLASS, geom[0])))
-    for d in segment_with_text(frame, ball_prompt, bundle):
-        geom = mask_to_bbox_centroid(d.mask)
-        if geom is not None:
-            dets.append(("orange_ball", _foot_point("orange_ball", geom[0])))
-    return dets
+def _objects_from_dets(dets_by_class: dict) -> list[tuple[str, tuple[float, float]]]:
+    """Robots y balon de un dict ``{clase: [Detection]}`` -> lista ``(class, foot_xy)``."""
+    out: list[tuple[str, tuple[float, float]]] = []
+    for cls in (ROBOT_CLASS, BALL_CLASS):
+        for d in dets_by_class.get(cls, []):
+            geom = mask_to_bbox_centroid(d.mask)
+            if geom is not None:
+                out.append((cls, _foot_point(cls, geom[0])))
+    return out
+
+
+def _foot_from_xyxy(class_name: str, bbox) -> tuple[float, float]:
+    """Foot-point desde una caja YOLO ``(x1, y1, x2, y2)``: centro-inferior (robot) o
+    centro (balon). Espeja el calculo de ``pod_minimap_sam3``."""
+    x1, y1, x2, y2 = bbox
+    cx = (x1 + x2) / 2.0
+    if class_name in BALL_CLASSES:
+        return (cx, (y1 + y2) / 2.0)
+    return (cx, y2)
+
+
+def _box_centroid(boxes: list) -> tuple[float, float] | None:
+    """Centroide de la primera caja YOLO (``BoxDetection`` xyxy) o ``None`` si no hay."""
+    if not boxes:
+        return None
+    x1, y1, x2, y2 = boxes[0].bbox
+    return ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+
+
+def _objects_from_boxes(boxes_by_class: dict) -> list[tuple[str, tuple[float, float]]]:
+    """Robots y balon de un dict ``{clase: [BoxDetection]}`` -> lista ``(class, foot_xy)``."""
+    out: list[tuple[str, tuple[float, float]]] = []
+    for cls in (ROBOT_CLASS, BALL_CLASS):
+        for bd in boxes_by_class.get(cls, []):
+            out.append((cls, _foot_from_xyxy(cls, bd.bbox)))
+    return out
 
 
 def _load_tracks_from_json(tracks_json: Path) -> tuple[dict[int, list], int]:
@@ -175,6 +207,10 @@ def render_minimap_video(
     tracks_json: str | Path | None = None,
     output_path: str | Path | None = None,
     max_frames: int | None = None,
+    start_frame: int = 0,
+    frame_step: int = 1,
+    detector: str = "sam3_text",
+    conf: float | None = None,
     bundle: Sam3Bundle | None = None,
     draw_overlay: bool = False,
     smooth_beta: float = 0.4,
@@ -186,10 +222,26 @@ def render_minimap_video(
         video_path: ruta del video (relativa a PROJECT_ROOT o absoluta).
         tracks_json: JSON de tracking ya generado (robots/balon). Si es ``None``,
             se detectan y siguen los objetos en el mismo paso (autocontenido).
+        detector: fuente de anclas/objetos (objetos solo si no hay ``tracks_json``):
+            ``"sam3_text"`` (todo por SAM3-texto; la azul suele faltar),
+            ``"yolo_sam3"`` (YOLO→SAM3 box-prompt: máscaras finas, más lento; útil para
+            análisis posterior), o ``"yolo"`` (cajas YOLO + ``green_floor`` por
+            SAM3-texto: **1 SAM3/frame, rápido**, reproduce ``pod_minimap_sam3``). Para el
+            minimap, ``"yolo"`` da el mismo resultado que ``"yolo_sam3"`` mucho más rápido
+            (el minimap solo usa cajas, no las máscaras de objetos).
+        conf: umbral de confianza de YOLO (aplica con ``yolo_sam3``/``yolo``; ignorado con
+            ``sam3_text``). ``None`` ⇒ el de la config. Bájalo (p. ej. ``0.25``) para
+            detectar más objetos/porterías, como la demo.
         output_path: ruta del mp4 de salida. Si es ``None`` se escribe en
             ``notebooks/fase_4_homografia/outputs/<stem>_minimap.mp4``.
-        max_frames: tope de frames. Con ``tracks_json`` se usa el rango cubierto por
-            los tracks si es ``None``; sin tracks, ``None`` recorre todo el video.
+        max_frames: tope de **frames procesados** (cantidad). Con ``tracks_json`` y sin
+            recorte (``start_frame=0``/``frame_step=1``) se usa el rango cubierto por los
+            tracks si es ``None``; en cualquier otro caso ``None`` recorre hasta el final.
+        start_frame: frame fuente donde empezar (0 = inicio). Para renderizar un tramo
+            concreto (p. ej. una jugada) sin procesar todo el video.
+        frame_step: paso de muestreo (``1`` todos, ``2`` 1 de cada 2…). Abarata el costo
+            proporcionalmente. Los ``frame_index`` de ``tracks_json`` siguen casando
+            porque son índices del video fuente.
         bundle: modelo SAM3 cargado; si ``None`` se carga con ``load_sam3()``.
         draw_overlay: si ``True`` dibuja las mascaras de anclas sobre el frame
             (depuracion de la homografia).
@@ -197,85 +249,126 @@ def render_minimap_video(
         progress: barra de progreso ``tqdm``.
 
     Returns:
-        ``{"video", "n_frames", "homography": {"estimated", "propagated"}, "sample_frame"}``.
+        ``{"video", "n_frames", "homography": {"estimated", "propagated", "rejected"},
+        "sample_frame"}``.
     """
     from tqdm.auto import tqdm
 
     video_path = Path(video_path)
     classes = _load_classes()
     bundle = bundle or load_sam3()
+    if detector not in _DETECTORS:
+        raise ValueError(f"detector '{detector}' no soportado (usa uno de {_DETECTORS}).")
+    use_yolo_boxes = detector == "yolo"
 
     frame_to_objs = None
     tracker = None
     if tracks_json is not None:
         frame_to_objs, max_index = _load_tracks_from_json(Path(tracks_json))
-        if max_frames is None and max_index >= 0:
+        # El default derivado de los tracks solo aplica al recorrido completo desde 0;
+        # con recorte (start_frame/frame_step) max_frames es una cuenta, no un rango.
+        if max_frames is None and max_index >= 0 and start_frame == 0 and frame_step == 1:
             max_frames = max_index + 1
     else:
         tracker = _GreedyTracker()
 
-    p_field = _prompt_for(FIELD_CLASS, classes)
-    p_yellow = _prompt_for(YELLOW_CLASS, classes)
-    p_blue = _prompt_for(BLUE_CLASS, classes)
-    p_robot = _prompt_for(ROBOT_CLASS, classes)
-    p_ball = _prompt_for("orange_ball", classes)
-    anchor_classes = [c for c in classes if c["name"] in (FIELD_CLASS, YELLOW_CLASS, BLUE_CLASS)]
+    # Solo se detectan las clases que se usan: anclas siempre; objetos solo si no hay
+    # tracks_json (con tracks_json los objetos vienen del JSON, no del detector).
+    wanted = {FIELD_CLASS, YELLOW_CLASS, BLUE_CLASS}
+    if tracks_json is None:
+        wanted |= {ROBOT_CLASS, BALL_CLASS}
+    needed_classes = [c for c in classes if c["name"] in wanted]
 
-    fps = get_video_fps(video_path)
+    # Preparación según el modo de detección.
+    if use_yolo_boxes:
+        # Camino rápido (= pod_minimap_sam3): cajas YOLO para objetos/porterías +
+        # green_floor por SAM3-texto. 1 SAM3/frame (el minimap no usa máscaras de objetos).
+        green_prompt = next(c["sam3_prompts"][0] for c in classes if c["name"] == FIELD_CLASS)
+        yolo_classes = [c for c in needed_classes if "yolo_id" in c]  # excluye green_floor
+    else:
+        detect = get_detector(detector)
+        # `conf` solo lo entiende el detector YOLO; con sam3_text se ignora.
+        detect_kwargs = {"conf": conf} if (conf is not None and detector == "yolo_sam3") else {}
+
+    # El video de salida corre a fps/frame_step para conservar la velocidad real:
+    # con frame_step=2 se escribe 1 de cada 2 frames (como la demo con every=2), así
+    # 150 frames a 15 fps duran 10 s en vez de 5 s a 30 fps.
+    fps = get_video_fps(video_path) / max(1, int(frame_step))
     if output_path is None:
         out_dir = PROJECT_ROOT / "notebooks" / "fase_4_homografia" / "outputs"
         out_dir.mkdir(parents=True, exist_ok=True)
         output_path = out_dir / f"{video_path.stem}_minimap.mp4"
     output_path = Path(output_path)
 
-    n_total = get_frame_count(video_path)
-    if max_frames is not None:
-        n_total = min(int(max_frames), n_total)
+    # Frames a procesar tras aplicar start_frame/frame_step (para dimensionar la barra).
+    total_src = get_frame_count(video_path)
+    strided = max(0, (total_src - int(start_frame) + int(frame_step) - 1) // int(frame_step))
+    n_total = strided if max_frames is None else min(int(max_frames), strided)
 
-    state = HomographyState()
+    vh = VideoHomography(smooth_beta=smooth_beta)
+    # El camino C hornea la orientación en H (amarilla siempre a x<L/2), así que el
+    # minimap canónico ya queda orientado: NO se llama a renderer.orient_once.
     renderer = MinimapRenderer()
     last_composed = None
     n_frames = 0
 
     with open_video_writer(output_path, fps=fps) as append:
         for frame_index, frame in tqdm(
-            iter_frames(video_path, max_frames), total=n_total,
+            iter_frames(video_path, max_frames, start_frame=start_frame, frame_step=frame_step),
+            total=n_total,
             desc=f"minimap {video_path.stem}", unit="frame", leave=False, disable=not progress,
         ):
             n_frames += 1
 
-            # Segmentar las anclas una sola vez (SAM3 es lo caro); reusar para la
-            # homografia y, si aplica, para el overlay de depuracion.
-            f_dets = segment_with_text(frame, p_field, bundle)
-            y_dets = segment_with_text(frame, p_yellow, bundle)
-            b_dets = segment_with_text(frame, p_blue, bundle)
-            field_mask = _largest_mask(f_dets)
-            yellow_mask = _largest_mask(y_dets)
-            blue_mask = _largest_mask(b_dets)
-            fh: FrameHomography = estimate_homography(
-                field_mask, yellow_mask, blue_mask, state, smooth_beta=smooth_beta
-            )
-            # Orientacion del minimap fijada una vez (campo vertical -> minimap vertical).
-            renderer.orient_once(mask_centroid(field_mask), mask_centroid(yellow_mask))
+            # Detección por frame. El minimap solo usa la MÁSCARA de la alfombra; para
+            # porterías y objetos basta con sus cajas (centroide / foot-point).
+            if use_yolo_boxes:
+                # Rápido (= pod_minimap_sam3): cajas YOLO + green_floor por SAM3-texto.
+                boxes = detect_boxes(frame, classes=yolo_classes, conf=conf)
+                field_mask = _largest_mask(segment_with_text(frame, green_prompt, bundle))
+                yc = _box_centroid(boxes.get(YELLOW_CLASS, []))
+                bc = _box_centroid(boxes.get(BLUE_CLASS, []))
+                objs_raw = _objects_from_boxes(boxes)
+            else:
+                # Detector pluggable con máscaras: sam3_text | yolo_sam3 (1 llamada).
+                dets = detect(frame, classes=needed_classes, bundle=bundle, **detect_kwargs)
+                field_mask = _largest_mask(dets.get(FIELD_CLASS, []))
+                yc = mask_centroid(_largest_mask(dets.get(YELLOW_CLASS, [])))
+                bc = mask_centroid(_largest_mask(dets.get(BLUE_CLASS, [])))
+                objs_raw = _objects_from_dets(dets)
 
-            # Objetos (id estable, clase, punto-pie).
+            # Centroides de portería: con sam3_text la azul suele faltar (bc=None, basta
+            # la amarilla); yolo_sam3/yolo dan ambas -> orientación más firme.
+            # Camino C: solve_masks usa color solo para detectar BLANCO (hue-agnóstico),
+            # así que el frame RGB sirve sin convertir a BGR. Sin alfombra -> se propaga.
+            if field_mask is not None:
+                # Limpia blobs sueltos (muñequeras/reflejos) -> alfombra = un cuadrilátero.
+                field_mask = _largest_component(field_mask)
+                H, _status = vh.update_masks(frame, field_mask, yc, bc)
+            else:
+                vh.n_propagated += 1
+                H, _status = vh.prev_H, "propagated"
+
+            # Objetos (id estable, clase, punto-pie): del JSON 2×2 o del detector del frame.
             if frame_to_objs is not None:
                 objs = frame_to_objs.get(frame_index, [])
             else:
-                objs = tracker.update(_detect_objects(frame, p_robot, p_ball, bundle))
+                objs = tracker.update(objs_raw)
 
             projected: list[tuple[int, str, float, float]] = []
-            if fh.H is not None and objs:
+            if H is not None and objs:
                 feet = np.array([foot for _, _, foot in objs], dtype=np.float32)
-                cm = project_points(feet, fh.H)
+                cm = project_points(feet, H)
                 for (obj_id, cls, _), (x_cm, y_cm) in zip(objs, cm):
                     projected.append((obj_id, cls, float(x_cm), float(y_cm)))
             renderer.update(projected)
 
             base = frame
             if draw_overlay:
-                dets = {FIELD_CLASS: f_dets, YELLOW_CLASS: y_dets, BLUE_CLASS: b_dets}
-                base = overlay_detections(frame, dets, classes=anchor_classes)
+                # Reproyecta la cancha (rectangulo + circulo) y, si el frame fue
+                # estimado con anclas, las 4 esquinas detectadas (como en la demo).
+                corners = vh.last_corners if _status == "anchors" else None
+                base = draw_field_overlay(frame, H, corners)
 
             composed = renderer.composite(base)
             last_composed = composed
@@ -291,6 +384,10 @@ def render_minimap_video(
     return {
         "video": output_path,
         "n_frames": n_frames,
-        "homography": {"estimated": state.n_estimated, "propagated": state.n_propagated},
+        "homography": {
+            "estimated": vh.n_estimated,
+            "propagated": vh.n_propagated,
+            "rejected": vh.n_rejected,
+        },
         "sample_frame": sample_path,
     }
