@@ -98,6 +98,16 @@ def _label(cls_name: str, obj_id: int) -> str:
     return cls_name if obj_id < 0 else f"{cls_name} #{obj_id}"
 
 
+def _payload_has_rle(payload: dict) -> bool:
+    """True si alguna detección de algún frame trae ``rle`` (corta al primer hallazgo)."""
+    for frame in payload.get("frames", []):
+        for dets in frame.get("detections", {}).values():
+            for det in dets:
+                if "rle" in det:
+                    return True
+    return False
+
+
 def _trajectories_by_obj(payload: dict) -> dict[int, dict]:
     """Por ``obj_id``: ``{"class", "points": [(frame_index, (cx, cy)), ...]}`` ordenado."""
     out: dict[int, dict] = {}
@@ -125,11 +135,14 @@ def _compose_frame(
     thickness: int,
     font_scale: float,
     draw_masks: bool,
+    masks_only: bool = False,
 ) -> np.ndarray:
     """Dibuja el overlay de un frame (máscara opcional -> trayectorias -> cajas/etiquetas).
 
     No muta ``frame`` (trabaja sobre una copia contigua) y devuelve el frame compuesto
-    RGB ``uint8``. Las clases en ``excluded`` se omiten por completo.
+    RGB ``uint8``. Las clases en ``excluded`` se omiten por completo. Si ``masks_only``
+    es ``True`` solo se pinta el relleno de máscara (sin trayectorias, cajas ni
+    etiquetas): el look del overlay de segmentación per-frame.
     """
     import cv2
 
@@ -159,6 +172,9 @@ def _compose_frame(
                     color, dtype=np.float32
                 )
                 out[mask] = blend.round().clip(0, 255).astype(np.uint8)
+
+    if masks_only:
+        return out
 
     # 2) Trayectorias (centroides en la ventana (f-N, f]).
     for trk in traj_by_obj.values():
@@ -207,6 +223,7 @@ def render_obj_id_overlay(
     video_path: Path | str | None = None,
     output_path: Path | None = None,
     draw_masks: bool = False,
+    masks_only: bool = False,
     trajectory_window: int | None = None,
     excluded_classes: list[str] | None = None,
 ) -> Path:
@@ -219,6 +236,9 @@ def render_obj_id_overlay(
             JSON (no pisa el mp4 de inferencia).
         draw_masks: si ``True`` y el JSON trae ``rle``, además rellena la máscara
             (color de clase); sin ``rle`` se avisa y se degrada a cajas/estela.
+        masks_only: si ``True`` produce el overlay de **segmentación** (solo relleno de
+            máscara por clase, sin cajas/etiquetas/estela). Implica ``draw_masks`` y
+            **requiere** que el JSON traiga ``rle`` (si no, ``ValueError``).
         trajectory_window: N (frames) de la ventana de estela; ``None`` ⇒ config.
         excluded_classes: clases a no dibujar; ``None`` ⇒ config (default
             ``["green_floor"]``).
@@ -227,7 +247,9 @@ def render_obj_id_overlay(
         La ruta (``Path``) del mp4 escrito.
 
     Raises:
-        ValueError: si el JSON no es de ``mode="tracking"``.
+        ValueError: si el JSON no es de ``mode="tracking"``, o si ``masks_only`` y el
+            JSON no trae ``rle`` (hay que re-correr la inferencia con
+            ``include_masks=True`` / ``--overwrite``).
         FileNotFoundError: si el JSON o el video no resuelven.
     """
     payload = json.loads(Path(json_path).read_text(encoding="utf-8"))
@@ -236,6 +258,13 @@ def render_obj_id_overlay(
             "render_obj_id_overlay requiere un JSON de mode='tracking' "
             f"(se recibio mode={payload.get('mode')!r})."
         )
+    if masks_only:
+        draw_masks = True
+        if not _payload_has_rle(payload):
+            raise ValueError(
+                "masks_only=True requiere máscaras en el JSON, pero no trae 'rle'. "
+                "Re-corre la inferencia con include_masks=True (en el hub: --overwrite)."
+            )
 
     settings = _load_overlay_settings()
     window = (
@@ -283,6 +312,7 @@ def render_obj_id_overlay(
                     thickness=thickness,
                     font_scale=font_scale,
                     draw_masks=draw_masks,
+                    masks_only=masks_only,
                 )
             )
 

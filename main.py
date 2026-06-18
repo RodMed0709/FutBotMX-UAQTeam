@@ -223,15 +223,11 @@ def plan_outputs(stem: str, run_label: str, outputs_dir: str) -> dict[str, Path]
     tracking_json, tracking_video = inference_paths(
         stem, outputs_dir, namespace=run_label
     )
-    seg_json, seg_video = inference_paths(
-        stem, outputs_dir, namespace=f"{run_label}/seg"
-    )
     return {
         "tracking_json": tracking_json,
         "tracking_video": tracking_video,
         "obj_overlay": tracking_json.with_name(f"{stem}_obj_id.mp4"),
-        "seg_json": seg_json,
-        "seg_video": seg_video,
+        "seg_overlay": tracking_json.with_name(f"{stem}_seg.mp4"),
         "broadcast_mp4": events_paths(
             stem, "broadcast", "mp4", outputs_dir=outputs_dir
         ),
@@ -269,7 +265,7 @@ def stage_inference(
         detector=choice.detector,
         tracker=choice.tracker,
         run_label=run_label,
-        include_masks=False,
+        include_masks=True,
         render_video=True,
         progress=True,
     )
@@ -306,24 +302,19 @@ def stage_individual_overlays(
             paths["tracking_json"], video_path=video
         )
 
-    # Overlay de segmentación (corrida per-frame en su propio namespace).
+    # Overlay de segmentación: post-pase sobre el 'rle' del JSON de tracking (sin SAM3,
+    # video completo) -> misma duración que el de tracking, ejecutable en local.
     console.print("[bold]▶ Overlay individual de segmentación…[/]")
-    if paths["seg_json"].exists() and not overwrite:
-        out["seg_json"] = paths["seg_json"]
-        out["seg_video"] = paths["seg_video"]
+    if paths["seg_overlay"].exists() and not overwrite:
+        out["seg_overlay"] = paths["seg_overlay"]
     else:
-        from src.core.inference import run_inference
-
-        seg = run_inference(
-            video,
-            mode="segmentation",
-            detector=choice.detector,
-            run_label=f"{run_label}/seg",
-            render_video=True,
-            progress=True,
+        out["seg_overlay"] = render_obj_id_overlay(
+            paths["tracking_json"],
+            video_path=video,
+            output_path=paths["seg_overlay"],
+            draw_masks=True,
+            masks_only=True,
         )
-        out["seg_json"] = Path(seg["json"])
-        out["seg_video"] = Path(seg["video"])
 
     return StageResult("generado", out)
 
