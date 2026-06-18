@@ -34,6 +34,8 @@ CLIPS = [
     (_SUPERIOR / "IMG_9933.MOV", "min1", 0, 60),  # primer minuto (mayormente preparación)
     (_SUPERIOR / "IMG_9938.MOV", "min1", 0, 60),
     (_SUPERIOR / "IMG_9933.MOV", "5m30", 330, 60),  # 5:30–6:30: jugada con gol, más movido
+    (_SUPERIOR / "IMG_9933.MOV", "8m00", 480, 60),  # 8:00–9:00: media partida, juego activo
+    (_SUPERIOR / "IMG_9938.MOV", "5m00", 300, 60),  # 5:00–6:00: media partida, juego activo
 ]
 
 
