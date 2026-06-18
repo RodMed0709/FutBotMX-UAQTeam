@@ -32,7 +32,8 @@
 ### T2 — Esqueleto de `main.py` y CLI  ⟵ T0
 - [ ] Crear `main.py` en la raíz con cabecera de constantes (`VIDEO_EXTS`,
   `MAX_FRAMES_WARN`, `DEFAULT_TRACKER="bytetrack"`).
-- [ ] `parse_args()` con `argparse`: `video` (posicional), `--default`, `--overwrite`.
+- [ ] `parse_args()` con `argparse`: `video` (posicional), `--default`, `--overwrite`,
+  `--vista {superior,generica}` (default `None`).
 - [ ] `main()`/`run(args)` que encadena las etapas y retorna **código de salida int**.
 - [ ] Imports pesados (`src.core.*`, `cv2`) **dentro** de funciones (lazy).
 - **DoD**: `python main.py --help` muestra los 3 parámetros; `python main.py` sin ruta
@@ -49,15 +50,18 @@
 
 ### T4 — Selección de piezas (`choose_pipeline`)  ⟵ T2
 - [ ] `--default` ⇒ `PipelineChoice(detector=<config|sam3_text>, tracker="bytetrack",
-  want_overlays=False, default=True)` sin prompts.
+  want_overlays=False, default=True, vista=<--vista|"superior">)` sin prompts.
 - [ ] Interactivo ⇒ `questionary.select` para detector (de `_DETECTORS`), tracker (de
-  `KNOWN_TRACKERS`) y `questionary.confirm` para overlays.
+  `KNOWN_TRACKERS`), **vista** (`superior|generica`, salvo `--vista`) y
+  `questionary.confirm` para overlays.
 - [ ] Detector por defecto leído del config activo (clave `detector`), fallback
   `sam3_text`.
+- [ ] **Vista**: si `--vista` viene, prevalece (no se pregunta); si no, interactivo
+  pregunta y `--default`/no-TTY ⇒ `superior` (RF-23/24).
 - [ ] Guard no-TTY: si `not sys.stdin.isatty()` y no `--default` ⇒ abortar sugiriendo
   `--default`.
-- **DoD**: `choose_pipeline(default=True)` devuelve la elección esperada sin prompts;
-  las opciones interactivas salen de los registros (no hardcodeadas).
+- **DoD**: `choose_pipeline(default=True)` devuelve la elección esperada (vista
+  `superior`) sin prompts; las opciones interactivas salen de los registros.
 
 ### T5 — Rutas nativas (`derive_run_label` + `plan_outputs`)  ⟵ T4
 - [ ] `run_label = f"{detector}+{tracker}"`.
@@ -85,12 +89,17 @@
 - **DoD**: con `want_overlays=False` la etapa se marca `omitido`; con `True` genera
   ambos overlays usando el **video crudo** como fuente.
 
-### T8 — Etapa broadcast (`stage_broadcast`, entregable)  ⟵ T1, T6
+### T8 — Etapa broadcast (`stage_broadcast`, entregable + gate por vista)  ⟵ T1, T6
+- [ ] **Gate (RF-24)**: si `choice.vista == "generica"` ⇒ `omitido` ("vista genérica…")
+  sin calcular nada.
 - [ ] Si `broadcast_mp4.exists()` y no `--overwrite` ⇒ `reusado`.
-- [ ] Si no ⇒ `render_broadcast_overlay(tracking_json, clip=<video_crudo>, layout=2,
+- [ ] **Validación (RF-25)**: con `vista == "superior"`, `compute_metric_positions(
+  tracking_json, video=<video_crudo>)`; si **degradado** (sin `xy_cm`) ⇒ `omitido`
+  ("homografía degradada…"), no se renderiza.
+- [ ] Si válida ⇒ `render_broadcast_overlay(tracking_json, clip=<video_crudo>, layout=2,
   goal_source="strict", use_kalman=True, progress=True)`.
-- **DoD**: genera el broadcast usando el clip **crudo** (sin máscaras quemadas); relanzar
-  lo reporta `reusado`.
+- **DoD**: `generica` omite sin homografía; `superior` válida genera el broadcast con el
+  clip **crudo**; relanzar lo reporta `reusado`.
 
 ### T9 — Reporte y manejo de errores (`report` + try/except)  ⟵ T6, T7, T8
 - [ ] `report()` imprime `rich.Table` *Artefacto | Estado (generado/reusado/omitido) |
@@ -105,8 +114,9 @@
 - [ ] Script manual estilo repo (no pytest): import directo `from main import ...`
   (o `import main`).
 - [ ] Casos: `validate_video` acepta `.MOV` real y rechaza inexistente/`.txt`;
-  `choose_pipeline(default=True)` sin prompts; `plan_outputs` string-match; con un
-  tracking JSON fixture, `stage_inference` ⇒ `reusado` **sin** importar SAM3.
+  `choose_pipeline(default=True)` sin prompts (vista `superior`); `plan_outputs`
+  string-match; con un tracking JSON fixture, `stage_inference` ⇒ `reusado` **sin**
+  importar SAM3; `stage_broadcast` con `vista="generica"` ⇒ `omitido` sin cargar nada.
 - **DoD**: `python testing/test_main_hub.py` corre en local **sin GPU** y todos los
   asserts pasan.
 
@@ -134,3 +144,5 @@ T0 → T1 → T2 → T3 → T4 → T5 → T6 → T7 → T8 → T9 → T10 → T1
 - CA-4: entrada inválida → código ≠ 0 sin cargar SAM3.
 - CA-5: rutas nativas mostradas en pantalla; nada se mueve.
 - CA-6: broadcast con clip crudo (sin máscaras).
+- CA-7: `--vista generica` omite homografía/eventos/broadcast; `--vista superior` sobre
+  clip no-superior omite por homografía degradada (con aviso).

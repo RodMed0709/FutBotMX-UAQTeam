@@ -10,7 +10,7 @@
 - **Consola**: `questionary` (menús/selección interactiva) + `rich` (paneles, color,
   tabla de resumen, barra de progreso de etapas). Se añaden a `requirements.txt`.
 - **Argumentos**: `argparse` de la stdlib (sin dependencia extra) para
-  `<ruta_video> [--default] [--overwrite]`.
+  `<ruta_video> [--default] [--overwrite] [--vista {superior,generica}]`.
 - **CV/validación de video**: `cv2` vía las utilidades existentes
   (`frame_extraction.get_frame_count`, `get_video_fps`) — importadas **lazy**.
 - **Orquestación**: fachadas existentes `run_inference`, `render_obj_id_overlay`,
@@ -27,11 +27,11 @@ pesados (`src.core.*`, cv2) **dentro** de las funciones que los usan (RNF-2). Es
 
 ```
 main.py
-├── parse_args()                      -> argparse.Namespace (video, default, overwrite)
+├── parse_args()                      -> Namespace (video, default, overwrite, vista)
 ├── validate_video(path)              -> Path  (RF-5/6; lanza SystemExit≠0 si inválido)
-├── choose_pipeline(default: bool)    -> PipelineChoice (detector, tracker, overlays)
-│      · default=True  -> elección por defecto, sin preguntar (RF-3/12)
-│      · default=False -> questionary: detector -> tracker -> ¿overlays? (RF-7)
+├── choose_pipeline(default, vista)   -> PipelineChoice (detector, tracker, overlays, vista)
+│      · default=True  -> elección por defecto, sin preguntar; vista=vista_arg|"superior"
+│      · default=False -> questionary: detector -> tracker -> [vista] -> ¿overlays? (RF-7)
 ├── derive_run_label(choice)          -> str  ("<detector>+<tracker>")  (RF-21/§5)
 ├── plan_outputs(video, run_label)    -> OutputPaths (rutas nativas esperadas)
 ├── stage_inference(...)              -> dict   (reusa o corre run_inference; RF-16)
@@ -42,7 +42,8 @@ main.py
 ```
 
 Tipos ligeros (dataclasses o dicts):
-- `PipelineChoice(detector: str, tracker: str, want_overlays: bool, default: bool)`.
+- `PipelineChoice(detector: str, tracker: str, want_overlays: bool, default: bool,
+  vista: str)` — `vista ∈ {"superior","generica"}`.
 - `OutputPaths(tracking_json, tracking_video, seg_json, seg_video, obj_overlay,
   broadcast_mp4, broadcast_png)` — todas `Path` en sus rutas **nativas**.
 - Cada `stage_*` devuelve `{"status": "generado"|"reusado"|"omitido", "paths": {...}}`.
@@ -63,14 +64,16 @@ Tipos ligeros (dataclasses o dicts):
 
 `choose_pipeline(default)`:
 - **`--default`** ⇒ `PipelineChoice(detector=<config|sam3_text>, tracker="bytetrack",
-  want_overlays=False, default=True)`. El detector por defecto se lee del config activo
-  (clave `detector`); si no existe, fallback `sam3_text` (la convención del repo).
+  want_overlays=False, default=True, vista=<--vista|"superior">)`. El detector por defecto
+  se lee del config activo (clave `detector`); si no existe, fallback `sam3_text`.
 - **Interactivo** ⇒ `questionary.select`:
   1. **Detector/segmentador**: opciones de `list(src.core.detectors._DETECTORS)`
      (introspección del registro; hoy `sam3_text`, `yolo_sam3`).
   2. **Tracker**: opciones de `list(src.core.trackers.KNOWN_TRACKERS)`
      (hoy `bytetrack`, `botsort`).
-  3. **¿Overlays individuales (segmentación + tracking)?**: `questionary.confirm`.
+  3. **Vista de cámara** (`superior`|`generica`): `questionary.select`, **salvo** que
+     venga por `--vista` (entonces se usa ese valor sin preguntar).
+  4. **¿Overlays individuales (segmentación + tracking)?**: `questionary.confirm`.
 - **Fijos no preguntados (RF-9)**: homografía `"lines"`, `use_kalman=True` (ya es el
   default tras la decisión 19), `goal_source="strict"`, `layout=2`. El `main` los pasa
   explícitos al broadcast para dejar la intención registrada.
@@ -107,12 +110,20 @@ Todas las etapas comprueban **existencia en ruta nativa** antes de ejecutar; con
    - **Segmentación**: `run_inference(video, mode="segmentation", detector=...,
      run_label=f"{run_label}/seg", render_video=True)`. Idempotente por su propio JSON.
    - Cada sub-overlay respeta su skip-done por ruta nativa.
-3. **`stage_broadcast`** (entregable, RF-11/13/21):
+3. **`stage_broadcast`** (entregable, RF-11/13/21/23-25):
+   - **Gate por vista (RF-24)**: si `choice.vista == "generica"` ⇒ `omitido`
+     (detail "vista genérica: homografía/eventos no aplican"). No se calcula nada.
    - Si `broadcast_mp4.exists()` y no `--overwrite` ⇒ `reusado`.
-   - Si no ⇒ `render_broadcast_overlay(tracking_json, clip=<video_crudo>, layout=2,
-     goal_source="strict", use_kalman=True, progress=True)`.
+   - **Validación de homografía (RF-25)**: con `vista == "superior"`, antes de renderizar
+     se llama `compute_metric_positions(tracking_json, video=<video_crudo>)` y se evalúa
+     el **modo degradado** (`metric is None` o ningún `p.xy_cm`). Si degradado ⇒ `omitido`
+     (detail "homografía degradada: el clip no parece cámara superior"); **no** se produce
+     un broadcast degradado.
+   - Si la homografía es válida ⇒ `render_broadcast_overlay(tracking_json,
+     clip=<video_crudo>, layout=2, goal_source="strict", use_kalman=True, progress=True)`.
    - **`clip=`** es el parámetro nuevo (ver §8): evita el `<stem>.mp4` segmentado y se
-     reenvía a la métrica interna.
+     reenvía a la métrica interna. Nota: la validación recalcula la homografía una vez más
+     que el render (coste CPU de segundos; aceptable y solo en `superior`).
 
 El post-proceso CPU (homografía/métrica/eventos) ocurre **dentro** de
 `render_broadcast_overlay` y **se recalcula** siempre (RF-17): no se persiste ni saltea
@@ -164,6 +175,9 @@ en `docs/10_eventos.md` (firma) como nota menor.
   - `plan_outputs` arma las rutas nativas esperadas (string match).
   - Con un **tracking JSON ya existente** (fixture o uno de `outputs/`), `stage_inference`
     reporta `reusado` **sin** importar SAM3 (verifica idempotencia A).
+  - `choose_pipeline(default=True, vista=None)` ⇒ `vista="superior"`; con `vista="generica"`
+    ⇒ se respeta. `stage_broadcast` con `choice.vista=="generica"` ⇒ `omitido` sin calcular
+    homografía (RF-24).
 - **Validación visual / etapas pesadas**: en el **pod** (GPU), corrida real end-to-end
   sobre un clip corto; se valida que el broadcast usa el clip **crudo** (sin máscaras) y
   que relanzar reusa. (Se hará cuando se pida, no en este paso.)
@@ -192,6 +206,7 @@ en `docs/10_eventos.md` (firma) como nota menor.
 | RF-16/17/18 (idempotencia A) | §6 |
 | RF-19/20 (no mover + reporte) | §5, §7 (`report`) |
 | RF-21 (clip crudo) | §6.3, §8 |
+| RF-23/24/25 (vista de cámara) | §4 (selección/flag), §6.3 (gate + validación) |
 | RNF-1 (cambio src acotado) | §8 |
 | RNF-2 (lazy imports) | §2 |
 | RNF-3 (config-driven) | §5, §9 |

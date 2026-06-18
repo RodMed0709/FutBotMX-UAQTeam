@@ -287,6 +287,7 @@ def _mini_by_frame(metric) -> dict[int, list[tuple[int, str, float, float]]]:
 def render_broadcast_overlay(
     tracks_json: str | Path,
     *,
+    clip: str | Path | None = None,
     layout: int = 2,
     goal_source: str = "strict",
     use_kalman: bool = True,
@@ -304,6 +305,11 @@ def render_broadcast_overlay(
 ) -> BroadcastResult:
     """Renderiza el video de espectador. ``layout`` 1|2 (default 2); ``goal_source`` strict|geometric.
 
+    ``clip`` (opcional): ruta del **video crudo** a usar como lienzo y como fuente de la
+    métrica. ``None`` (default) ⇒ comportamiento histórico: se resuelve el sibling
+    ``<stem>.mp4`` junto al JSON (que suele ser el video **segmentado**). Pásalo cuando el
+    sibling tenga máscaras quemadas y quieras el clip sin segmentar.
+
     ``draw_field_on_video`` (default ``True``): reproyecta el campo (rectángulo + círculo) sobre el
     video con la homografía por frame (homografía embebida). Se ignora en modo degradado.
     """
@@ -317,7 +323,8 @@ def render_broadcast_overlay(
         raise ValueError(f"goal_source inválido: {goal_source!r} (usa 'strict' o 'geometric')")
 
     tracks_json = Path(tracks_json)
-    clip = tracks_json.parent / f"{tracks_json.stem}.mp4"
+    explicit_clip = clip is not None
+    clip = Path(clip) if explicit_clip else tracks_json.parent / f"{tracks_json.stem}.mp4"
     if not clip.exists():
         raise FileNotFoundError(f"no está el clip del partido: {clip}")
     fps = out_fps or get_video_fps(clip)
@@ -327,7 +334,12 @@ def render_broadcast_overlay(
     degradado = False
     metric = None
     try:
-        metric = compute_metric_positions(tracks_json)
+        # Con ``clip`` explícito (crudo) se reenvía a la métrica como ``video=``; con
+        # ``clip=None`` se mantiene el comportamiento histórico (la métrica resuelve su
+        # propio clip por la cabecera del JSON).
+        metric = compute_metric_positions(
+            tracks_json, **({"video": clip} if explicit_clip else {})
+        )
     except Exception:
         degradado = True
     # Kalman como fuente de posiciones (flag, default on): refina el balón una sola vez; el mismo

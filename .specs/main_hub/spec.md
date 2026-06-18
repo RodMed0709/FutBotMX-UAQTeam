@@ -63,16 +63,26 @@ sus salidas en una carpeta dedicada por video.
 - **HU-5 (saber dónde quedó todo).** Como integrante del equipo, quiero que al terminar
   el programa me **muestre en pantalla la ruta exacta** de cada artefacto generado o
   reusado, para localizarlos y compartirlos sin adivinar.
+- **HU-6 (vista de cámara correcta).** Como integrante del equipo, quiero declarar si el
+  video es de **cámara superior** (campo completo) o **genérico**, porque homografía,
+  eventos y broadcast **solo** tienen sentido sobre cámara superior; en un clip genérico
+  quiero que el `main` corra el **pipeline base** (detección/segmentación/tracking) y
+  **omita** el post-proceso métrico con un aviso claro, en vez de producir resultados sin
+  sentido.
 
 ## 5. Requisitos funcionales
 
 ### 5.1 Invocación y parámetros
-- **RF-1.** Firma: `python main.py <ruta_video> [--default] [--overwrite]`.
+- **RF-1.** Firma: `python main.py <ruta_video> [--default] [--overwrite]
+  [--vista {superior,generica}]`.
 - **RF-2.** `<ruta_video>` es **posicional y obligatoria** (acepta ruta relativa a la
   raíz del proyecto o absoluta).
 - **RF-3.** `--default`: corre **sin preguntar nada** la inferencia por defecto del
   proyecto (detector del config activo, fallback `sam3_text`; tracker `bytetrack`),
-  overlays individuales **OFF**, y los fijos de RF-9.
+  overlays individuales **OFF**, **vista `superior`** (RF-23), y los fijos de RF-9.
+- **RF-3b.** `--vista {superior,generica}`: declara el ángulo de cámara (RF-23). Si se
+  pasa, **prevalece** y no se pregunta; si se omite, se decide por modo (interactivo
+  pregunta; `--default`/no-TTY ⇒ `superior`).
 - **RF-4.** `--overwrite`: fuerza re-correr **todo** aunque existan artefactos previos
   (desactiva la idempotencia de §6).
 
@@ -86,8 +96,9 @@ sus salidas en una carpeta dedicada por video.
 
 ### 5.3 Selección de piezas
 - **RF-7.** En modo interactivo, preguntar **en orden**: (a) **detector/segmentador**
-  (`sam3_text` | `yolo_sam3`); (b) **tracker** (`bytetrack` | `botsort`); (c) si se
-  generan los **overlays individuales** de segmentación y tracking (sí/no).
+  (`sam3_text` | `yolo_sam3`); (b) **tracker** (`bytetrack` | `botsort`); (c) **vista de
+  cámara** (`superior` | `generica`), salvo que venga por `--vista` (RF-3b/RF-23); (d) si
+  se generan los **overlays individuales** de segmentación y tracking (sí/no).
 - **RF-8.** Las opciones ofrecidas se derivan de los **registros existentes**
   (`get_detector`/`get_tracker`), de modo que añadir una pieza no rompe el `main`.
 - **RF-9.** **Fijos por defecto** (no se preguntan en ningún modo): homografía por
@@ -98,6 +109,8 @@ sus salidas en una carpeta dedicada por video.
   (homografía/eventos requieren `obj_id` estables).
 - **RF-11.** Secuencia de etapas: **inferencia (tracking)** → [**overlays individuales**
   opcionales] → **homografía/métrica** → **eventos** → **broadcast (video espectador)**.
+  Las etapas de **homografía/métrica/eventos/broadcast** están **condicionadas** a la
+  vista de cámara (§5.6): solo corren si la vista es `superior`.
 - **RF-12.** Overlay individual de **tracking** vía `render_obj_id_overlay`; overlay de
   **segmentación** vía una corrida `mode="segmentation"` adicional. Solo si el usuario
   los pidió (RF-7c).
@@ -109,6 +122,18 @@ sus salidas en una carpeta dedicada por video.
   **barra de progreso** durante las etapas pesadas.
 - **RF-15.** Resumen final claro: qué se reusó, qué se generó y **dónde** quedó cada
   artefacto.
+
+### 5.6 Vista de cámara (homografía/eventos solo en cámara superior)
+- **RF-23.** El pipeline base (detección/segmentación/tracking) aplica a **cualquier**
+  clip, pero **homografía, eventos y broadcast** requieren **cámara superior** (campo
+  completo). El `main` maneja una **vista declarada**: `superior` | `generica`.
+- **RF-24.** Si la vista es **`generica`**: el `main` corre el pipeline base (+overlays si
+  se pidieron) y **omite** homografía/eventos/broadcast, marcándolos `omitido` con el
+  motivo "vista genérica" en el reporte.
+- **RF-25.** Si la vista es **`superior`**: el `main` intenta el post-proceso. **Valida**
+  la homografía: si sale **degradada** (no se reconoce el campo → el clip no parece
+  cámara superior), **avisa** y **omite** eventos/broadcast (no produce un broadcast
+  degradado). Si la homografía es válida, genera el broadcast normalmente.
 
 ## 6. Idempotencia (modelo "A")
 
@@ -172,6 +197,10 @@ sus salidas en una carpeta dedicada por video.
   (`outputs/inference/…`, `outputs/eventos/…`). Relanzar el comando no rehace lo caro
   (los chequeos de idempotencia aciertan contra esas rutas).
 - **CA-6.** El video de espectador usa el **clip crudo** (sin máscaras quemadas).
+- **CA-7.** Con `--vista generica`, el `main` corre solo el pipeline base y marca
+  homografía/eventos/broadcast como `omitido` (motivo "vista genérica"); con
+  `--vista superior` sobre un clip que no es superior, la homografía degradada hace que
+  eventos/broadcast se **omitan con aviso** (no se genera broadcast degradado).
 
 ## 10. Supuestos y decisiones (congelados)
 
@@ -203,6 +232,14 @@ responsable:
 21. `run_label`/namespace derivado para no pisar otras configuraciones.
 22. **Reporte en pantalla** de la ruta exacta de cada artefacto (generado/reusado); el
     hub **no centraliza por movimiento** (mover rompería la idempotencia).
+23. **Vista de cámara** `superior|generica` (RF-23): homografía/eventos/broadcast solo en
+    `superior`. Mecanismo: **declaración + validación** (flag `--vista` o pregunta
+    interactiva; si declara `superior` pero la homografía sale degradada, se omite con
+    aviso).
+24. **Default de vista**: `--default`/no-TTY ⇒ `superior` (corre todo, coherente con que
+    el entregable es el broadcast).
+25. La **validación** de "es superior" se hace con la **homografía/métrica existente**
+    (modo degradado de `compute_metric_positions`), sin heurística de imagen nueva.
 
 ## 11. Dependencias y riesgos
 

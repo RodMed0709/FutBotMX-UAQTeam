@@ -44,6 +44,7 @@ Función principal configurable (el showpiece de espectador):
 render_broadcast_overlay(
     tracks_json: str | Path,
     *,
+    clip: str | Path | None = None,   # video crudo (lienzo + métrica); None ⇒ sibling <stem>.mp4
     layout: int = 2,                  # 1 | 2 (disposición de paneles)
     goal_source: str = "strict",      # "strict" | "geometric"
     use_kalman: bool = True,          # refinar cinemática con Kalman (fase_6)
