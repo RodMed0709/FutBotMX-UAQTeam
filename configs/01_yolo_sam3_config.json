@@ -1,4 +1,5 @@
 {
+  "detector": "yolo_sam3",
   "working_dirs": {
     "dataset_dir": "data/raw",
     "sam3_dir": "assets/sam3",

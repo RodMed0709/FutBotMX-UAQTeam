@@ -282,8 +282,10 @@ This is the literal protocol from constitution §8. Work and documents are in **
 - Global configs live in JSON files named `{NN}_{EXP}.json` (`NN` = version/trial,
   `EXP` = descriptive). They centralize all **relative** data paths. The currently
   active config (`.env` `CONFIG_FILENAME`) is `configs/01_yolo_sam3_config.json` (adds
-  the `yolo` and `botsort` sections on top of `00_testing_config.json`; it has **no**
-  top-level `detector` key, so the default detector falls back to `sam3_text`); both
+  the `yolo` and `botsort` sections on top of `00_testing_config.json`; its top-level
+  `detector` key is **`yolo_sam3`**, so any `detector=None` defaults to the YOLO→SAM3
+  path — incl. `main.py --default` — and needs `assets/yolo/best.pt`; set it to
+  `sam3_text` or pass an explicit detector to use the SAM3-only path); both
   hold `working_dirs.dataset_dir` = `data/raw`,
   `working_dirs.sam3_dir` = `assets/sam3`, and `preprocess.frame_quota` = `30`, the
   frame count read by `extract_frames` in quota mode.
