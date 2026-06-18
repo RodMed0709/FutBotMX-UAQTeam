@@ -37,3 +37,26 @@ YOLO de [`yolo_sam3`](03_deteccion.md) se afinó solo con los videos NO-testing,
 los 5 videos de testing del benchmark están intocados para ambos detectores. Los
 `testing_frames` congelados serán la base de la evaluación mIoU/Dice cuando llegue el
 ground-truth manual (proceso **pausado**, espera anotaciones del equipo).
+
+## `src/bootstrap_data.py` — provisión y reproducibilidad
+
+- **Tarea SDD:** [`bootstrap_data`](../.specs/bootstrap_data/)
+- **Salida versionada:** `assets/bootstrap_manifest.json` (fuente de verdad de qué
+  bajar) + `.env.example`.
+
+Script interactivo (`python -m src.bootstrap_data`) que provee los insumos no
+versionados desde Google Drive (`gdown`), idempotente y no-destructivo, y genera el
+`.env` si falta. Dos paquetes declarados en el manifiesto:
+
+- **`demo`** — paquete **autocontenido y reproducible**: clips demo + **sus JSON de
+  tracking con `rle`** + pesos SAM 3/YOLO. Los JSON permiten correr la **Capa B en local
+  sin GPU** ([capa métrica](09_capa_metrica.md) / [eventos](10_eventos.md)) al instante.
+- **`all`** — dataset completo + pesos. El dataset (Drive público de la convocatoria,
+  `17Abril`/`18abril`) excede el tope de carpetas de `gdown`, así que es **descarga
+  manual** (`manual: true`): el bootstrap solo verifica presencia e imprime el enlace.
+
+**Reproducibilidad de extremo a extremo:** sobre un demo, `main.py … --overwrite` ignora
+lo descargado y rehace **todo de cero** (inferencia SAM 3 → eventos → broadcast); que el
+resultado coincida con el del paquete demo valida la reproducibilidad. El esquema del
+manifiesto lo comparte el flag [`--demo` del hub](06_pipeline_principal.md)
+([`main_demo_flag`](../.specs/main_demo_flag/)).

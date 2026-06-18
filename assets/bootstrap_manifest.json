@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "_comment": "Fuente de verdad de la provisión de datos (tarea bootstrap_data). Los IDs de Drive (opción A) viven aquí; reemplaza cada 'REEMPLAZAR_*' por el ID real del archivo/carpeta compartido. 'destino' es relativo a PROJECT_ROOT. 'paquetes': 'all' (dataset completo) y/o 'demo' (paquete autocontenido).",
+  "items": [
+    {
+      "nombre": "IMG_9933_5m30",
+      "paquetes": ["demo"],
+      "vista": "superior",
+      "recursos": [
+        {
+          "tipo": "clip",
+          "drive_id": "https://drive.google.com/file/d/1mFwlLRckNQFT6ytM4MTMaN44Ff01hPhJ/view?usp=drive_link",
+          "destino": "data/raw/demos/IMG_9933_5m30.mp4"
+        },
+        {
+          "tipo": "tracking_json",
+          "drive_id": "https://drive.google.com/file/d/1GTybrBWGeESA5xGQLlWLFngk2_YNIEVd/view?usp=drive_link",
+          "destino": "outputs/inference/yolo_sam3+bytetrack/IMG_9933_5m30/IMG_9933_5m30.json"
+        }
+      ]
+    },
+    {
+      "nombre": "IMG_9938_5m00",
+      "paquetes": ["demo"],
+      "vista": "superior",
+      "recursos": [
+        {
+          "tipo": "clip",
+          "drive_id": "https://drive.google.com/file/d/1QHrXGTYjF2njo_o-0VtoCAnEjE6sjEwn/view?usp=drive_link",
+          "destino": "data/raw/demos/IMG_9938_5m00.mp4"
+        },
+        {
+          "tipo": "tracking_json",
+          "drive_id": "https://drive.google.com/file/d/14toTlJHSIAXdlhIkaUFIhkNeZd-JcDVy/view?usp=drive_link",
+          "destino": "outputs/inference/yolo_sam3+bytetrack/IMG_9938_5m00/IMG_9938_5m00.json"
+        }
+      ]
+    },
+    {
+      "nombre": "video-597_singular_display",
+      "paquetes": ["demo"],
+      "vista": "generica",
+      "recursos": [
+        {
+          "tipo": "clip",
+          "drive_id": "https://drive.google.com/file/d/1O5Jow0LTAMdhP44HvhbpHUToPWx0_CAP/view?usp=drive_link",
+          "destino": "data/raw/demos/video-597_singular_display.mov"
+        },
+        {
+          "tipo": "tracking_json",
+          "drive_id": "https://drive.google.com/file/d/1aDg1mVg6cCaTW-xPbgrr2Mx1g7t_gkWT/view?usp=drive_link",
+          "destino": "outputs/inference/yolo_sam3+bytetrack/video-597_singular_display/video-597_singular_display.json"
+        }
+      ]
+    },
+    {
+      "nombre": "IMG_9913",
+      "paquetes": ["demo"],
+      "vista": "superior",
+      "recursos": [
+        {
+          "tipo": "clip",
+          "drive_id": "https://drive.google.com/file/d/1agCJ2NW_2aGraxDm3XBDMIagiSQwydAA/view?usp=sharing",
+          "destino": "data/raw/demos/IMG_9913.mov"
+        },
+        {
+          "tipo": "tracking_json",
+          "drive_id": "https://drive.google.com/file/d/1eNeTS6fi-dp24ibQVY5UN09qdEK3k7kZ/view?usp=drive_link",
+          "destino": "outputs/inference/yolo_sam3+bytetrack/IMG_9913/IMG_9913.json"
+        }
+      ]
+    },
+    {
+      "nombre": "sam3_weights",
+      "paquetes": ["all", "demo"],
+      "recursos": [
+        {
+          "tipo": "dir",
+          "drive_id": "https://drive.google.com/drive/folders/1A8lutXwjmBofLwIO4OIZTuTaFXjPWrLs?usp=drive_link",
+          "destino": "assets/sam3"
+        }
+      ]
+    },
+    {
+      "nombre": "yolo_best",
+      "paquetes": ["all", "demo"],
+      "recursos": [
+        {
+          "tipo": "file",
+          "drive_id": "https://drive.google.com/file/d/1XMvKK9-4ph5zi4jN6ZPBCga3EwHt47tE/view?usp=drive_link",
+          "destino": "assets/yolo/best.pt"
+        }
+      ]
+    },
+    {
+      "nombre": "dataset_completo",
+      "paquetes": ["all"],
+      "_comment": "Dataset público de la convocatoria: carpetas con fecha en la raíz. DESCARGA MANUAL (manual:true): 17Abril (88 videos) excede el tope de ~50 de gdown.download_folder; el bootstrap solo verifica presencia y, si falta, imprime el enlace e instrucciones. La reproducibilidad la cubre el paquete demo. NO se re-sube; se apunta al Drive público existente.",
+      "recursos": [
+        {
+          "tipo": "dir",
+          "manual": true,
+          "drive_id": "https://drive.google.com/drive/folders/16r7segfcVmoGDPevKmll8Jq0ClQ-Z72t?usp=drive_link",
+          "destino": "data/raw/17Abril"
+        },
+        {
+          "tipo": "dir",
+          "manual": true,
+          "drive_id": "https://drive.google.com/drive/folders/1vYXFP8cdKx7OtxbJ_CFYaa4-lUZOt18k?usp=drive_link",
+          "destino": "data/raw/18abril"
+        }
+      ]
+    }
+  ]
+}
