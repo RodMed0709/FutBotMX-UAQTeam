@@ -451,8 +451,9 @@ RUN_HEAVY=1 jupyter nbconvert --to notebook --execute --inplace \
   (Roboflow). Con el COCO GT se medirá mIoU / Boundary IoU / Dice; la evaluación de tracking
   queda diferida.
 - **Estrategia de fine-tuning de YOLO — abierta** (Roboflow vs. SAM3-assisted).
-- **`bootstrap_data`** — script idempotente para descargar/colocar videos y pesos (hoy
-  manual).
+- **Provisión de datos (`bootstrap_data` + `--demo`) — HECHA** y validada en local y Docker
+  (ver §6). Cabos menores: el **dataset completo es descarga manual** (excede el tope de
+  carpetas de `gdown`) y la **estrategia de volumen persistente en RunPod** queda abierta.
 
 ---
 

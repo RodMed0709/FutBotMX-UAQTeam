@@ -231,16 +231,16 @@ Cross-cutting facts worth knowing before editing:
   `sys.path.insert(0, str(PROJECT_ROOT))` — remove it and keep the direct
   `import src...`. Should be done as its own atomic SDD task. See
   `.specs/editable_module/tasks.md` → "Trabajo futuro".
-- **`bootstrap_data` (data provisioning script).** The real-files model is now
-  adopted (data mounts removed; `data/raw`/`assets/sam3` are real dirs carried by
-  the app bind-mount — see `.specs/data_volume_mounts/spec.md` §8). What's still
-  pending is **automating** how those dirs get populated: an idempotent script
-  that checks whether the videos / `sam3.pt` exist and **downloads them if
-  missing** (candidate host: Google Drive), skips when already present (so
-  contributors who already have the data don't re-download), keeps URLs/credentials
-  in `.env`, and on RunPod targets a **persistent network volume** (download once).
-  Should be its own atomic SDD task; draft in `.specs/drafts/bootstrap_data.md`.
-  RunPod data-placement strategy still undecided.
+- **`bootstrap_data` (data provisioning script) — DONE.** Implemented as the SDD
+  tasks `bootstrap_data` (`src/bootstrap_data.py`, interactive menu over the versioned
+  `assets/bootstrap_manifest.json`, gdown download, `.env` generation) and
+  `main_demo_flag` (the `--demo` hub flag). The demo package (clips + tracking JSON with
+  `rle` + weights) is self-contained and the full demo flow was **validated end-to-end
+  in local conda and Docker** (CPU, no GPU). A `.dockerignore` keeps the build context
+  lean (~22 GB → ~52 MB; data via bind-mount). Remaining minor loose ends (to tidy next
+  session): the convocatoria **dataset is manual** (`manual: true`, exceeds gdown's
+  folder limit), and the **RunPod** persistent-volume placement strategy is still
+  undecided.
 
 ## Spec-Driven Development workflow (mandatory)
 
