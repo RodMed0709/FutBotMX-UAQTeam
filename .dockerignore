@@ -1,0 +1,19 @@
+# Datos pesados: llegan por el bind-mount del workspace en runtime, NO se hornean
+# en la imagen (evita un contexto/imagen de ~22 GB).
+data/
+outputs/
+assets/sam3/
+assets/yolo/
+
+# Control de versiones, entornos y cachés.
+.git/
+.venv/
+venv/
+**/__pycache__/
+*.pyc
+*.egg-info/
+**/.ipynb_checkpoints/
+
+# Notebooks/artefactos locales no necesarios para construir la imagen.
+*.log
+.env
