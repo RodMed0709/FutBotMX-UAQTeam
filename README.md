@@ -365,6 +365,19 @@ la reproducibilidad:
 python main.py data/raw/demos/IMG_9933_5m30.mp4 --overwrite   # rehace inferencia → eventos → broadcast
 ```
 
+**Validado en local (conda) y Docker.** El flujo del demo —bootstrap → reuso del
+tracking JSON → Capa B (eventos/broadcast/overlays)— se probó de punta a punta en un
+entorno conda limpio y dentro del contenedor, **sin GPU** (CPU puro). Notas prácticas:
+
+- El paquete demo corre **sin GPU ni SAM 3**: la Capa B se calcula desde el JSON con `rle`.
+- **`--overwrite` desde cero sí requiere GPU + SAM 3** (re-corre la inferencia); en CPU no
+  es viable.
+- El render del broadcast en **CPU es lento** (~0.8 fps; un clip de 1 min ≈ 30 min). Para
+  renders completos usa GPU o clips cortos; el camino normal del demo **reusa** el JSON y
+  solo recompone el broadcast.
+- En Docker, un [`.dockerignore`](.dockerignore) excluye los datos pesados del contexto de
+  build (de ~22 GB a ~52 MB): llegan por el bind-mount en runtime, no horneados en la imagen.
+
 ---
 
 ## 7. Ejecución del flujo de procesamiento
