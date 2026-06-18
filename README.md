@@ -286,44 +286,84 @@ cd futbot
 #   GPU (Blackwell): pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 #   CPU:             pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
-pip install git+https://github.com/facebookresearch/sam3.git   # SAM 3 (no está en PyPI)
-pip install -e .                                                 # src/ como paquete editable
+pip install -e .                                                # src/ como paquete editable
+pip install git+https://github.com/facebookresearch/sam3.git   # SAM 3 — solo para inferencia desde cero (GPU)
 
-python main.py data/raw/.../clip.mp4 --default                   # corrida end-to-end
+# 1) Provee los insumos del demo (idempotente; elige "Solo demos": clips + JSON con rle + pesos).
+#    También genera el .env desde .env.example si falta.
+python -m src.bootstrap_data
+
+# 2) Corre el demo guiado: elige el clip; la Capa B (eventos/broadcast/overlays) corre sin GPU.
+python main.py --demo
 ```
+
+> Para el **demo** no hace falta GPU ni SAM 3: el paquete trae el tracking JSON (con
+> `rle`) y la Capa B se calcula en CPU. SAM 3 + GPU solo se necesitan para rehacer la
+> inferencia desde cero (`--overwrite`).
 
 ### Modo B — Docker / RunPod
 
 `pip install -e .` ya se ejecuta en el build, así que **no hay pasos manuales** dentro
 del contenedor. El único volumen es el bind-mount del workspace (`../` →
 `/${CONTAINER_WORKSPACE_DIR}`): `data/raw` y `assets/sam3` son archivos reales del repo
-(sin volúmenes de datos aparte ni symlinks).
+(sin volúmenes de datos aparte ni symlinks). Un [`.dockerignore`](.dockerignore) excluye
+los datos pesados (`data/`, `outputs/`, `assets/sam3`, `assets/yolo`) del contexto de
+build —llegan por el bind-mount en runtime—, manteniendo la imagen liviana.
 
 ```bash
 # Construir y levantar (servicio: futbotmx26)
 docker compose --env-file .env -f docker/docker-compose.yml up --build -d
 
-# Ejecutar el hub dentro del contenedor
+# 1) Provee el demo dentro del contenedor
 docker compose --env-file .env -f docker/docker-compose.yml \
-  exec futbotmx26 python main.py data/raw/.../clip.mp4 --default
+  exec futbotmx26 python -m src.bootstrap_data
+
+# 2) Corre el demo guiado dentro del contenedor
+docker compose --env-file .env -f docker/docker-compose.yml \
+  exec futbotmx26 python main.py --demo
 ```
 
 **Configuración (ambos modos):** el config activo se elige con `CONFIG_FILENAME` en `.env`
 (`configs/01_yolo_sam3_config.json`). Las rutas se resuelven con
 [`src.utils.get_abs_path`](src/utils.py) contra la raíz — nunca se hardcodean.
 
-**Insumos no versionados requeridos** (git-ignored; cada quien los provee):
+**Insumos no versionados requeridos** (git-ignored):
 
 | Insumo                        | Ruta (config)         | Para qué                    |
 | ----------------------------- | --------------------- | --------------------------- |
 | Videos `.MOV`                 | `data/raw/`           | dataset                     |
 | Modelo SAM 3 (`sam3.pt` + HF) | `assets/sam3/`        | segmentación                |
 | YOLO afinado `best.pt`        | `assets/yolo/best.pt` | detector `yolo_sam3`        |
-| `.env`                        | raíz                  | `CONFIG_FILENAME`, secretos |
+| `.env`                        | raíz                  | `CONFIG_FILENAME`           |
 
 > La inferencia requiere GPU. Todo lo que no llama a SAM 3 (rutas, conteo de frames,
 > selección del dataset, **post-proceso CPU** si hay un tracking JSON) corre en cualquier
 > entorno.
+
+### Provisión de datos y reproducibilidad
+
+En vez de colocar los insumos a mano, usa el **bootstrap** (idempotente, descarga de
+Google Drive con `gdown`; también **genera el `.env`** desde `.env.example` si falta):
+
+```bash
+python -m src.bootstrap_data        # menú: Solo demos (recomendado) · Todos · Salir
+```
+
+- **Solo demos** — paquete **autocontenido y reproducible**: los clips demo + **sus JSON
+  de tracking (con `rle`)** + pesos SAM 3/YOLO. Con los JSON puedes correr la **Capa B
+  (segmentación-overlay + eventos/broadcast) en local sin GPU al instante**.
+- **Todos** — dataset completo (123 videos) + pesos. El dataset vive en el Drive público
+  de la convocatoria; como `17Abril` (88 videos) excede el tope de `gdown`, esa parte es
+  **descarga manual** (el bootstrap verifica presencia e imprime el enlace).
+
+**Validar reproducibilidad de extremo a extremo:** sobre un demo, `main.py … --overwrite`
+ignora los artefactos descargados y **rehace todo de cero** (re-corre SAM 3, regenera
+overlays y broadcast). Si el resultado coincide con el del paquete demo, queda demostrada
+la reproducibilidad:
+
+```bash
+python main.py data/raw/demos/IMG_9933_5m30.mp4 --overwrite   # rehace inferencia → eventos → broadcast
+```
 
 ---
 
@@ -334,7 +374,10 @@ video** (solo lo lee; por costo se recomiendan clips < 1 min), es **idempotente*
 ya generado sin rehacer la inferencia) y **reporta** dónde quedó cada artefacto.
 
 ```bash
-# Interactivo: pregunta detector / tracker / vista de cámara / overlays
+# Demo guiada: el primer paso es elegir un clip demo del manifiesto (ignora --default/--vista)
+python main.py --demo
+
+# Interactivo sobre un clip propio: pregunta detector / tracker / vista de cámara / overlays
 python main.py data/raw/.../clip.mp4
 
 # Sin preguntar (config por defecto = yolo_sam3 + bytetrack)
@@ -351,18 +394,31 @@ broadcast layout 2. La salida destacada es el **video de espectador** en
 solo corren en **cámara superior** (`--vista superior`, por defecto); en un clip genérico el
 hub corre solo el pipeline base.
 
-**El hub en acción:** el modo interactivo guía la elección de piezas y, al terminar, reporta
-dónde quedó cada artefacto sin mover nada.
+**Overlays individuales (opcionales).** Si se piden, la inferencia de tracking guarda las
+máscaras (RLE) en el JSON, de modo que **una sola pasada de SAM 3** alimenta los dos
+overlays: el de **tracking** (`<clip>_obj_id.mp4`, caja + `#id` + estela) y el de
+**segmentación** (`<clip>_seg.mp4`, relleno de máscara por clase). El de segmentación se
+genera como **post-pase desacoplado sobre el JSON** —sin volver a invocar SAM 3—, así que
+recorre el **video completo** (misma duración que el de tracking) y es **regenerable en
+local sin GPU** a partir del JSON.
 
-<!-- TODO(capturas): generar y reemplazar estos placeholders.
-     - main_prompt.png  -> fase interactiva (questionary/rich); se captura en local,
-       sale antes de cargar SAM 3, no requiere GPU.
-     - main_reporte.png -> tabla rich del reporte final de artefactos; se captura de
-       una corrida real en el pod. -->
+**El hub en acción.** Al terminar reporta dónde quedó cada artefacto sin mover nada. En una
+corrida `--default` sobre un clip genérico, los overlays no se solicitan y las etapas de
+cámara superior se omiten:
 
-| Selección interactiva de piezas | Reporte final de artefactos |
-| ------------------------------- | --------------------------- |
-| ![Hub — prompt interactivo](assets/readme/png/main_prompt.png) | ![Hub — reporte de artefactos](assets/readme/png/main_reporte.png) |
+![Hub — reporte de una corrida `--default` (vista genérica)](assets/readme/png/main_run_example_deafult_vista_generica.png)
+
+En **modo interactivo** (`python main.py <clip>`, sin `--default`) el hub guía la
+elección de piezas paso a paso:
+
+| Detector | Tracker | Vista de cámara |
+| -------- | ------- | --------------- |
+| ![detector](assets/readme/png/main_detector.png) | ![tracker](assets/readme/png/main_tracker.png) | ![vista](assets/readme/png/main_ovarlay.png) |
+
+Y al terminar reporta dónde quedó cada artefacto (corrida completa con `--overwrite`,
+vista superior y overlays: inferencia → overlays → broadcast):
+
+![Hub — corrida interactiva completa y reporte de artefactos](assets/readme/png/main_output.png)
 
 **Regenerar los visuales de este README:**
 
