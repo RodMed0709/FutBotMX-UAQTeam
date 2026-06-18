@@ -1,171 +1,213 @@
-# Proyecto FutBot MX 2026 — UAQ Team
+# FutBot MX 2026 — UAQ Team
 
-Sistema de **detección, segmentación, seguimiento y análisis** de videos de fútbol
-robótico (Copa FutBotMX). El objetivo es tomar un video de un partido y producir, por
-cada robot/pelota, **máscaras**, **cajas** y **trayectorias con identidad estable** a lo
-largo del tiempo, además de métricas para comparar configuraciones del pipeline.
+**Detección, segmentación, seguimiento y análisis de eventos** de partidos de fútbol
+robótico (Copa FutBotMX, categoría Profesional). El sistema toma el video de un partido y
+produce, por cada robot y por la pelota, **máscaras**, **cajas** y **trayectorias con
+identidad estable**, y sobre cámara superior además **proyecta el juego a un campo métrico
+(cm)** para detectar **goles, posesión y faltas** y componer un **video narrativo de
+espectador**.
 
-Este README resume **lo que se ha construido y lo que se tiene hasta ahora**. El detalle
-de ingeniería de cada pieza vive en [`CLAUDE.md`](CLAUDE.md) y en `.specs/<tarea>/`
-(metodología [Spec-Driven Development](.specs/constitution.md)). Para **usar** el sistema
-en tus propios notebooks, abre el **recetario**:
-[`notebooks/cookbook_pipeline.ipynb`](notebooks/cookbook_pipeline.ipynb).
+![Broadcast — video de espectador](assets/readme/gifs/broadcast_IMG_9933_5m30.gif)
 
----
-
-## 🚧 Reorganización en curso para la entrega (NOTA TEMPORAL)
-
-> Esta sección es **temporal** y se eliminará cuando se reescriba el README final. Deja
-> constancia del proceso de **documentación, limpieza y preparación de entregables** que
-> está en marcha, para que cualquiera pueda continuarlo **siguiendo el mismo plan**.
-
-**Plan de 6 pasos** (en orden) hacia los entregables de la convocatoria
-(ver `.specs/drafts/final_entregables_convocatoria.md` y `diseño_readme_guia.md`):
-
-1. ✅ **Documentación por fases** — `docs/` (índice + 12 fases) con enlaces a código
-   (`archivo.py#Lnnn`), notebooks y tareas `.specs/`. **Empieza por
-   [`docs/README.md`](docs/README.md).**
-2. ✅ **Recetario ampliado** — `notebooks/cookbook_pipeline.ipynb` ahora ejemplifica
-   **todo** el pipeline, incluido el post-proceso CPU-local (homografía → métrica →
-   eventos → broadcast → Kalman).
-3. ✅ **Limpieza del repo** — se **decidió no hacerla**: `outputs/` está git-ignored y no
-   afecta a un entorno nuevo. En su lugar, el README final documentará los **insumos no
-   versionados** (ver abajo).
-4. ⏭️ **`main.py` end-to-end (SIGUIENTE)** — script reproducible que corra el pipeline de
-   principio a fin y **genere los demos** del README. Toca código ⇒ se abrirá su SDD
-   (`spec→plan→tasks`) antes de implementar. **La próxima sesión arranca aquí.**
-5. ⏳ **README final** — según `diseño_readme_guia`. Incluirá la sección de **insumos no
-   versionados requeridos** (ver tabla abajo) y se ligará al TODO `bootstrap_data`.
-6. ⏳ **Entregables visuales** — gifs/pngs/videos/gráficas que falten, generados por el
-   `main` (o por un notebook que dependa de que el `main` corra end-to-end).
-
-**Insumos no versionados requeridos para reproducir todo** (git-ignored; pendiente de
-redactar formalmente en el README final):
-
-| Insumo | Ruta (de la config) | Para qué | ¿`bootstrap_data`? |
-|---|---|---|---|
-| Videos `.MOV` | `data/raw/` | dataset | sí |
-| Modelo SAM3 (`sam3.pt`+HF) | `assets/sam3/` | segmentación | sí |
-| YOLO afinado `best.pt` | `assets/yolo/best.pt` | detector `yolo_sam3` | **no (gap del draft)** |
-| `.env` | raíz | `CONFIG_FILENAME`, etc. | n/a (lo crea el usuario) |
-
-Pendientes anotados durante el proceso: ampliar `bootstrap_data` para incluir el YOLO
-`best.pt`; corregir en `CLAUDE.md` la descripción de los mounts de Docker (lo pide el
-propio draft del bootstrap).
+> Documentación de ingeniería por fases en [`docs/`](docs/README.md) y por tarea en
+> `.specs/<tarea>/`. Para **usar** la API desde tus notebooks, abre el recetario:
+> [`notebooks/cookbook_pipeline.ipynb`](notebooks/cookbook_pipeline.ipynb).
 
 ---
 
-## Estado actual (qué funciona hoy)
+## 1. Descripción y arquitectura de la solución
 
-El **pipeline SAM3** está construido y operativo de punta a punta. Hoy puedes, sobre un
-video real:
+El sistema se organiza en **dos capas**:
 
-- **Segmentar** cada frame por clase (robots, pelota, etc.) con **SAM3**.
-- **Trackear** todo el video asignando `obj_id` **estables y únicos** por objeto.
-- Elegir el **detector** y el **tracker** como piezas intercambiables.
-- Correr **un video** o **lotes** de videos con una sola llamada.
-- Generar **mp4 anotados** y **JSON** auto-descriptivo (con o sin máscaras COCO-RLE).
-- **Comparar configuraciones** con un benchmark sin ground-truth (eficiencia +
-  consistencia).
+- **Capa A — percepción (GPU):** `detector/segmentador → tracker`. Aplica a **cualquier**
+  clip y produce máscaras + `obj_id` estables.
+- **Capa B — análisis métrico (CPU):** sobre **cámara superior**, proyecta a cm reales y
+  deriva métricas y eventos. Lee el JSON de tracking; no re-infiere.
 
-Todo es **config-driven** (sin rutas ni parámetros hardcodeados) y `src/` se instala
-como **paquete editable** (`import src` funciona desde cualquier notebook).
+### Enfoque técnico e innovación
 
----
+**1) Segmentación con SAM 3 + detector afinado (innovación sobre el modelo base).**
+`sam3_text` segmenta por *prompt de texto* ("robot", "orange ball"). La innovación es
+`yolo_sam3`: un **YOLO afinado** con auto-etiquetas generadas por SAM 3 (sobre los 103
+videos NO-testing) localiza cajas rápido y SAM 3 segmenta **dentro** de cada caja
+(box-prompt), acoplando dos arquitecturas complementarias.
 
-## El sistema en una idea: detector → tracker
+**2) Tracking con identidad estable.** Las máscaras se reducen a cajas y se asocian frame a
+frame con **ByteTrack** o **BoT-SORT** (un tracker por clase) hacia `obj_id` **globalmente
+únicos**, en streaming (sin OOM sobre el video completo).
 
-El pipeline **compone dos ejes ortogonales**:
+**3) Homografía al campo métrico.** Se estima una homografía por frame que lleva la imagen
+al campo cenital oficial (**243 × 182 cm**, líneas con *inset* de 12 cm, círculo central de
+radio 30 cm). Con correspondencias mundo←imagen (líneas blancas + esquinas + porterías) se
+resuelve la matriz `H ∈ ℝ³ˣ³` por mínimos cuadrados robustos (RANSAC) y la proyección de un
+punto es
 
 ```
-video ─► [ detector / segmentador ] ─► [ tracker ] ─► mp4 + JSON
-              sam3_text | yolo_sam3       none | bytetrack | botsort
+[x' y' w']ᵀ = H · [u v 1]ᵀ ,   (x, y)_cm = (x'/w', y'/w')
 ```
 
-- **Detector / segmentador** (qué hay en cada frame) —
-  [`src/core/detectors/`](src/core/detectors/):
-  - `sam3_text` — SAM3 segmenta por *prompt de texto* ("robot", "orange ball").
-  - `yolo_sam3` — un **YOLO afinado** (entrenado en los 103 videos NO-testing con
-    auto-etiquetas de SAM3) localiza cajas rápido y SAM3 segmenta dentro de ellas.
-- **Tracker** (cómo se mantiene la identidad entre frames) —
-  [`src/core/trackers/`](src/core/trackers/):
-  - `none` (solo segmentación, `obj_id` inestable), `bytetrack` (Kalman + IoU) o
-    `botsort` (añade compensación de movimiento de cámara).
+Para reducir *jitter* entre frames se aplica un suavizado EMA sobre `H` normalizada
+(`H₃₃ = 1`). El camino consolidado (ajuste a líneas, `homography_multifeature.py`) alcanza
+**~9–23 cm** de error.
 
-Una **única puerta de entrada** ([`run_inference`](src/core/inference.py)) resuelve por
-ti el muestreo de frames, el render y el esquema de salida según el modo.
+**4) Cinemática y filtro de Kalman propio (innovación).** La velocidad base es por
+**diferencias finitas**, `v = ‖pₜ − pₜ₋₁‖ / Δt` con `Δt = (f₂−f₁)/fps`, con corte de
+outliers y suavizado. Encima corre un **filtro de Kalman de velocidad constante 2D, escrito
+desde cero** (estado `x = [pₓ, p_y, vₓ, v_y]`), que aporta velocidad físicamente suave,
+**relleno de oclusión** (predict-only) y rechazo robusto de outliers:
+
+```
+Predicción:  x⁻ = F(Δt) x ,           P⁻ = F P Fᵀ + Q(Δt)
+Innovación:  y  = z − H x⁻ ,          S  = H P⁻ Hᵀ + R
+Ganancia:    K  = P⁻ Hᵀ S⁻¹
+Corrección:  x  = x⁻ + K y ,          P  = (I − K H) P⁻
+Oclusión:    x  = x⁻ , P = P⁻         (sin medición; la incertidumbre crece)
+```
+
+con `H = [[1,0,0,0],[0,1,0,0]]`, `Q` derivada de ruido blanco de aceleración (`σ_a`),
+`R = σ_z² I` calibrada del error de homografía (`σ_z ≈ 15 cm`), y **gating de Mahalanobis**
+`NIS = yᵀ S⁻¹ y` contra `χ²₂(0.99) = 9.21` (reemplaza el corte duro de velocidad sin tirar
+el track). Esto reduce la **varianza de aceleración un 98–100 %** frente a diferencias
+finitas y elimina picos de velocidad imposibles (p. ej. v_max de balón 196.3 → 116.4 cm/s).
+
+**5) Detección algorítmica de eventos.** Sobre las posiciones en cm: **gol estricto** vs
+tiro (geometría de cruce de línea de portería), **posesión vs control** (proximidad
+balón-robot con histéresis temporal), **faltas de campo** (fuera, área, *pushing*), zonas
+(mitades/tercios) y **mapa de calor** de ocupación. El entregable es el **video de
+espectador** (`event_broadcast_overlay`): marcador, banner de gol, panel de posesión,
+*feed* de eventos, minimapa cenital + heatmap y la homografía embebida.
 
 ---
 
-## Capacidades, una por una
+## 2. Metodología
 
-| Capacidad | Función | Qué hace |
+### Arquitectura del pipeline (flujo de datos)
+
+```
+                         CAPA A (GPU)                         CAPA B (CPU, solo cámara superior)
+ video ─► [ detector/segmentador ] ─► [ tracker ] ─► JSON ─► [ homografía ] ─► [ métrica cm ] ─► [ eventos ] ─► broadcast
+              sam3_text | yolo_sam3     bytetrack        (líneas→H)      posiciones/velocidad     gol/posesión/    (video
+                                        | botsort                        zonas/heatmap/Kalman      faltas          espectador)
+```
+
+Una **única puerta de entrada** ([`run_inference`](src/core/inference.py)) resuelve el
+muestreo de frames, el render y el esquema de salida según el modo
+(`segmentation` | `tracking`). Detector y tracker son **piezas intercambiables**
+([`src/core/detectors/`](src/core/detectors/), [`src/core/trackers/`](src/core/trackers/)),
+y añadir una clase es **solo configuración**. El hub [`main.py`](main.py) orquesta el flujo
+completo end-to-end (ver §7).
+
+#### Capa A — percepción (GPU): detección/segmentación → tracking
+
+```
+                     run_inference (inference.py) — fachada única por video
+                             │  mode = "segmentation" | "tracking"
+           ┌─────────────────┴──────────────────┐
+           ▼                                     ▼
+      pipeline.py                            tracking.py
+ (per-frame, obj_id NO estable)        (streaming, obj_id ESTABLE)
+           │                                     │
+           ▼                                     ▼
+ ┌───────────────────┐  get_detector  ┌───────────────────┐  get_tracker ┌──────────────────┐
+ │  DETECTOR  ⇆      │ ─────────────▶ │  DETECTOR  ⇆      │ ───────────▶ │  TRACKER  ⇆      │
+ │  • sam3_text      │                │  • sam3_text      │              │  • bytetrack     │
+ │  • yolo_sam3      │                │  • yolo_sam3      │              │  • botsort       │
+ └───────────────────┘                └───────────────────┘              └──────────────────┘
+           │                                     │
+           ▼                                     ▼
+ overlay + mp4 + JSON                 ┌──────────────────────────────┐
+ (segmentación)                       │  tracking JSON  ◀── la "moneda"
+                                      │  Track / TrackObservation     │   del post-proceso
+                                      │  (obj_id estable, [+ máscaras])│
+                                      └──────────────────────────────┘
+```
+
+El `tracking JSON` es la **frontera dura**: todo el post-proceso lee de ahí y no sabe qué
+detector/tracker lo generó. Piezas desmontables vía registro: `get_detector` y `get_tracker`.
+
+#### Capa B — post-proceso (CPU, cámara superior): homografía → eventos
+
+```
+ tracking JSON
+      │
+      ▼
+ ┌────────────────────────────┐  compute_metric_positions(homography="lines" | "masks")
+ │  HOMOGRAFÍA  ⇆ (flag)      │
+ │  • "lines"  (consolidada)  │  ◀── base compartida del post-proceso
+ │  • "masks"  (legacy)       │
+ └────────────────────────────┘
+      │  xy_cm por frame/obj_id  +  H por frame
+ ┌────┼─────────────────┬────────────────────┬───────────────┐
+ ▼    ▼                 ▼                    ▼               ▼
+ ESTIMADOR DE        zonas               EVENTOS           heatmap
+ ESTADO/CINEMÁTICA  (mitades/tercios)   • shot_vs_goal    (ocupación cm)
+ • dif. finitas (T4)                    • goal_geometric
+ • Kalman CV (f6) ✔                     • possession
+   suaviza + oclusión                   • field_violations
+      └─────────────────┬────────────────────┘
+                        ▼
+            event_broadcast_overlay  ◀── EL ENTREGABLE
+            (marcador, banner de gol, posesión,
+             minimapa cenital, heatmap, homografía embebida)
+```
+
+### Metodología de desarrollo — Spec-Driven Development (SDD)
+
+El repositorio sigue **SDD** ([`.specs/constitution.md`](.specs/constitution.md)): por cada
+tarea atómica se escribe `spec.md → plan.md → tasks.md` **antes** de tocar código, y cada
+tarea vive en su propia carpeta `.specs/<tarea>/`. El trabajo y la documentación están en
+**español**; lint/formato con `ruff check .` / `black .`. La documentación por fases del
+sistema está en [`docs/`](docs/README.md).
+
+---
+
+## 3. Resultados obtenidos y métricas
+
+### 3.1 Demostración visual — pipeline base (cualquier clip)
+
+Detección + segmentación por clase y tracking con identidad estable, sobre clips genéricos
+(< 1 min, no cámara superior):
+
+| Segmentación (SAM 3) | Tracking `obj_id` |
+|---|---|
+| ![segmentación](assets/readme/png/segmentacion_video-714_singular_display.png) | ![tracking](assets/readme/gifs/tracking_video-714_singular_display.gif) |
+
+### 3.2 Análisis avanzado — cámara superior (el entregable)
+
+Video narrativo, mapas de calor dinámicos, posesión con métricas temporales y posiciones en
+cm. Ejemplos sobre dos partidos distintos (`IMG_9933`, `IMG_9938`):
+
+| Broadcast (espectador) | Mapa de calor (ocupación) | Zonas / presencia |
 |---|---|---|
-| **Inferencia (fachada)** | [`run_inference`](src/core/inference.py) | Punto único por video: `mode="segmentation"` o `"tracking"`. Devuelve `{"json", "video", "index"}`. |
-| **Segmentación per-frame** | [`run_pipeline`](src/core/pipeline.py) | Segmenta cada frame con el detector elegido. `obj_id` inestable. |
-| **Tracking** | [`track_video`](src/core/tracking.py) | Streaming del video completo + ByteTrack/BoT-SORT → `obj_id` estables. Sin OOM. |
-| **Lotes** | [`run_batch`](src/core/batch.py) | N videos (por `split` o lista), SAM3 cargado **una sola vez**, skip-done, aislamiento de errores, resumen con timing. |
-| **Overlay por `obj_id`** | [`render_obj_id_overlay`](src/core/track_overlay.py) | Post-pase que dibuja caja + `nombre #id` + trayectoria, sin re-inferir. |
-| **Benchmark sin-GT** | [`src/eval/benchmark.py`](src/eval/benchmark.py) | Selección reproducible de videos + métricas de eficiencia/trayectoria/máscara + tabla comparativa. |
-| **Dataset** | [`build_metadata_csv`](src/data/metadata.py), [`export_testing_frames`](src/data/eval_frames.py) | Manifiesto con splits reproducibles + congelado del set de evaluación. |
+| ![broadcast](assets/readme/png/broadcast_IMG_9933_8m00.png) | ![heatmap](assets/readme/png/heatmap_ball_IMG_9933_5m30.png) | ![zonas](assets/readme/png/zonas_tercios_IMG_9933_5m30.png) |
 
-Parámetros transversales útiles (en `run_inference`/`run_batch`):
+**Velocidad: crudo vs Kalman** (suavizado físico + relleno de oclusión):
 
-- `detector` / `tracker` — eligen las piezas del pipeline.
-- `include_masks` — embebe máscaras COCO-RLE en el JSON.
-- `run_label` — **namespacea las salidas por config** (`outputs/inference/<run_label>/…`)
-  para que varias configuraciones **no se pisen** (y skip-done por config).
-- `progress` — barra de progreso `tqdm` por video (segmentación y tracking).
-- `sampling` — `"auto"` deja que el modo decida (segmentación → cuota; tracking →
-  prefijo contiguo en streaming).
+![velocidad kalman](assets/readme/png/velocidad_kalman_IMG_9933_5m30.png)
 
----
+Tablas Kalman completas en [`assets/fase6/tables/`](assets/fase6/tables/): la varianza de
+aceleración baja **98–100 %** y se rellenan los huecos de oclusión sin falsos goles.
 
-## Benchmark sin ground-truth (dos fases)
+### 3.3 Desempeño cuantitativo — benchmark sin ground-truth
 
-Como aún no hay anotación manual, no se mide exactitud (mAP/MOTA/mIoU) sino
-**eficiencia y consistencia**. El costo lo domina el detector y el tracker es casi
-gratis, así que el benchmark separa los ejes:
+Como aún no hay anotación manual, **no** se mide exactitud (mAP/MOTA/mIoU) sino
+**eficiencia y consistencia**, sobre 5 videos de testing (seed=36), tracking acotado a 2500
+frames. Drivers en [`notebooks/fase_3_benchmark_models/`](notebooks/fase_3_benchmark_models/).
+Honesto: el YOLO se entrenó solo con videos NO-testing, así que el split de testing está
+intocado para ambos detectores.
 
-- **Fase 1 — detectores**
-  ([`01_benchmark_detectors.ipynb`](notebooks/fase_3_benchmark_models/01_benchmark_detectors.ipynb)):
-  `sam3_text` vs `yolo_sam3`, eficiencia (FPS, VRAM).
-- **Fase 2 — trackers 2×2**
-  ([`02_benchmark_trackers.ipynb`](notebooks/fase_3_benchmark_models/02_benchmark_trackers.ipynb)):
-  detector × tracker, consistencia (`frag_rate`, `tracklet_len`).
-- **Fase 3 — análisis**
-  ([`03_benchmark_analysis.ipynb`](notebooks/fase_3_benchmark_models/03_benchmark_analysis.ipynb)):
-  gráficas comparativas.
+**Fase 1 — eficiencia del detector**
 
-Corre sobre 5 videos de **testing** elegidos con semilla fija. Es **honesto**: YOLO se
-entrenó solo con los videos NO-testing, así que el split de testing está intocado para
-ambos detectores.
-
----
-
-## Resultados del benchmark
-
-Corrida sobre 5 videos de testing (seed=36), tracking acotado a 2500 frames. Gráficas
-generadas por
-[`03_benchmark_analysis.ipynb`](notebooks/fase_3_benchmark_models/03_benchmark_analysis.ipynb).
-**Sin ground-truth: miden eficiencia y consistencia, no exactitud.**
-
-### Fase 1 — eficiencia del detector
-
-![Fase 1 — eficiencia por detector](assets/benchmark/fase1_detectores.png)
+![Fase 1](assets/benchmark/fase1_detectores.png)
 
 | Detector | FPS (↑) | VRAM pico MB (↓) |
 |---|---|---|
 | `sam3_text` | **1.82** | **2157** |
 | `yolo_sam3` | 1.71 | 3151 |
 
-En segmentación pura, `sam3_text` es **ligeramente más rápido y ~1 GB más ligero**:
-`yolo_sam3` añade el costo de YOLO **sin** quitarle trabajo a SAM3 (igual segmenta cada
-caja). La ventaja de YOLO aparece recién con tracker (Fase 2).
+**Fase 2 — trackers (2×2)**
 
-### Fase 2 — trackers (2×2)
-
-![Fase 2 — 2×2 eficiencia y consistencia](assets/benchmark/fase2_trackers.png)
+![Fase 2](assets/benchmark/fase2_trackers.png)
 
 | Config | FPS (↑) | VRAM MB (↓) | frag_rate (↓) | tracklet_len (↑) |
 |---|---|---|---|---|
@@ -174,116 +216,139 @@ caja). La ventaja de YOLO aparece recién con tracker (Fase 2).
 | `yolo_sam3+bytetrack` | **2.25** | 3151 | 0.035 | 186.3 |
 | `yolo_sam3+botsort` | 1.95 | 3151 | **0.011** | 146.5 |
 
-### Aislando cada eje
+![Fase 2 — ejes](assets/benchmark/fase2_ejes.png)
 
-![Fase 2 — ejes detector vs tracker](assets/benchmark/fase2_ejes.png)
+`bytetrack` rinde más que `botsort` (que paga la compensación de cámara); `yolo_sam3+botsort`
+tiene la **menor fragmentación** (0.011) y `sam3_text+bytetrack` los **tracklets más largos**
+(193) con el menor consumo. BoT-SORT solo ayuda emparejado con `yolo_sam3` (interacción → por
+eso el 2×2). `mask_iou` ~0.92 en las 4 configs **apenas discrimina**
+([métricas débiles](assets/benchmark/fase2_metricas_debiles.png), suplementarias). La
+exactitud llegará con el ground-truth (ver §«Lo que falta»).
 
-**Lectura:**
+---
 
-- **Eficiencia:** `bytetrack` rinde más que `botsort` (BoT-SORT paga la compensación de
-  cámara); en VRAM, `sam3_text` (~2.1 GB) pesa ~1 GB menos que `yolo_sam3` (~3.1 GB). El
-  líder de throughput es `yolo_sam3+bytetrack` (2.25 FPS), a costa de más VRAM.
-- **Consistencia:** `yolo_sam3+botsort` tiene la **menor fragmentación con diferencia**
-  (0.011), pero tracklets más cortos (146) y menos FPS. `sam3_text+bytetrack` da los
-  **tracklets más largos** (193) con fragmentación competitiva (0.035) y el menor consumo.
-- **Interacción (por eso el 2×2):** BoT-SORT solo ayuda **emparejado con `yolo_sam3`**;
-  con `sam3_text` es el **peor** (frag 0.061, tracklet 134). No es separable por ejes.
+## 4. Material audiovisual
 
-**Candidatos razonables** según la prioridad: `yolo_sam3+bytetrack` (throughput) o
-`yolo_sam3+botsort` (mínima fragmentación); `sam3_text+bytetrack` si se prioriza VRAM y
-tracklets largos. La decisión es humana; la exactitud llegará con el ground-truth.
+- 🎥 **Video demo (máx. 2 min):** _[enlace pendiente]_ — muestra la vista original junto al
+  resultado segmentado/narrativo (el broadcast superpone segmentación, tracking y
+  analítica con explicación visual).
+- 📱 **Reel de Instagram (≥ 30 s):** _[enlace pendiente]_
 
-### Métricas débiles (suplementarias, no decisorias)
+---
 
-![Fase 2 — métricas débiles](assets/benchmark/fase2_metricas_debiles.png)
+## 5. Requisitos de hardware y software
 
-`mask_iou` ~0.92 en las 4 configs (**apenas discrimina**); `smoothness` y `com_jitter`
-están confundidas por el movimiento real del objeto y son *gameables*. Se muestran por
-completitud, **no para decidir**. Recuerda que es una muestra de **5 videos** con frames
-acotados, y que sin ground-truth todo esto mide **consistencia, no exactitud**.
+- **Hardware:** GPU NVIDIA para la inferencia (probado en **RTX 5090 / Blackwell**; el
+  detector `yolo_sam3` usa ~3.1 GB de VRAM, `sam3_text` ~2.1 GB). La **Capa B**
+  (homografía, métrica, eventos, broadcast) corre en **CPU**.
+- **Software:** **Python 3.11**, PyTorch (CUDA cu128 o CPU), **SAM 3** (Meta), HF
+  Transformers, OpenCV, `supervision`/`trackers` (ByteTrack/BoT-SORT), Ultralytics YOLO,
+  `questionary` + `rich` (consola del hub). Lista completa en
+  [`requirements.txt`](requirements.txt).
+
+---
+
+## 6. Instalación y reproducción
+
+```bash
+git clone <url_del_repositorio>
+cd futbot
+
+# Entorno aislado (venv local o conda futbot26), Python 3.11
+# Torch va aparte según el destino:
+#   GPU (Blackwell): pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+#   CPU:             pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements.txt
+pip install git+https://github.com/facebookresearch/sam3.git   # SAM 3 (no está en PyPI)
+pip install -e .                                                 # src/ como paquete editable
+```
+
+**Configuración:** el config activo se elige con `CONFIG_FILENAME` en `.env`
+(`configs/01_yolo_sam3_config.json`). Las rutas se resuelven con
+[`src.utils.get_abs_path`](src/utils.py) contra la raíz — nunca se hardcodean.
+
+**Docker / RunPod:**
+`docker compose --env-file .env -f docker/docker-compose.yml up --build -d`.
+
+**Insumos no versionados requeridos** (git-ignored; cada quien los provee):
+
+| Insumo | Ruta (config) | Para qué |
+|---|---|---|
+| Videos `.MOV` | `data/raw/` | dataset |
+| Modelo SAM 3 (`sam3.pt` + HF) | `assets/sam3/` | segmentación |
+| YOLO afinado `best.pt` | `assets/yolo/best.pt` | detector `yolo_sam3` |
+| `.env` | raíz | `CONFIG_FILENAME`, secretos |
+
+> La inferencia requiere GPU. Todo lo que no llama a SAM 3 (rutas, conteo de frames,
+> selección del dataset, **post-proceso CPU** si hay un tracking JSON) corre en cualquier
+> entorno.
+
+---
+
+## 7. Ejecución del flujo de procesamiento
+
+El punto de entrada es el hub [`main.py`](main.py): corre el pipeline **end-to-end sobre un
+video** (solo lo lee; por costo se recomiendan clips < 1 min), es **idempotente** (reusa lo
+ya generado sin rehacer la inferencia) y **reporta** dónde quedó cada artefacto.
+
+```bash
+# Interactivo: pregunta detector / tracker / vista de cámara / overlays
+python main.py data/raw/.../clip.mp4
+
+# Sin preguntar (config por defecto = yolo_sam3 + bytetrack)
+python main.py data/raw/.../clip.mp4 --default
+
+# Forzar re-correr todo / declarar vista no superior
+python main.py data/raw/.../clip.mp4 --default --overwrite
+python main.py data/raw/.../clip_lateral.mp4 --vista generica
+```
+
+Fijos del entregable (no se preguntan): homografía por líneas, **Kalman ON**, gol estricto,
+broadcast layout 2. La salida destacada es el **video de espectador** en
+`outputs/eventos/<clip>/<clip>_broadcast.mp4`. Las etapas de homografía/eventos/broadcast
+solo corren en **cámara superior** (`--vista superior`, por defecto); en un clip genérico el
+hub corre solo el pipeline base.
+
+**Regenerar los visuales de este README:**
+
+```bash
+# 1) (pod) tracking de los clips curados de cámara superior
+python notebooks/fase_5_event_analysis/00_prepare_clips.py
+# 2) GIFs/PNGs/gráficas -> assets/readme/  (RUN_HEAVY=1 añade la segmentación SAM 3)
+RUN_HEAVY=1 jupyter nbconvert --to notebook --execute --inplace \
+  notebooks/fase_7_visuales/00_generar_visuales.ipynb
+```
 
 ---
 
 ## Lo que falta / en curso
 
-- **Evaluación con ground-truth — PAUSADA.** A la espera de la anotación manual del
-  equipo (Roboflow); cuando llegue el COCO ground-truth, se mide mIoU/Boundary
-  IoU/Dice contra él. La evaluación de tracking queda diferida.
-- **Estrategia de fine-tuning de YOLO — abierta.** `yolo_sam3` ya usa un YOLO afinado
-  con auto-etiquetas SAM3; la estrategia definitiva (Roboflow vs. SAM3-assisted) sigue
-  por decidir.
-- **`bootstrap_data`** — script idempotente para descargar/colocar videos y pesos
-  (aún manual).
-- **Streaming de segmentación de video completo** — mejora **condicional** de RAM, solo
-  si la segmentación `all_frames` se vuelve un entregable (el benchmark no la necesita).
+- **Evaluación con ground-truth — PAUSADA:** a la espera de la anotación manual del equipo
+  (Roboflow). Con el COCO GT se medirá mIoU / Boundary IoU / Dice; la evaluación de tracking
+  queda diferida.
+- **Estrategia de fine-tuning de YOLO — abierta** (Roboflow vs. SAM3-assisted).
+- **`bootstrap_data`** — script idempotente para descargar/colocar videos y pesos (hoy
+  manual).
 
 ---
 
-## Instalación y entorno
+## 8. Licencia y créditos
 
-- **Python 3.11** en entorno aislado (venv local o conda `futbot26`).
-- **Torch aparte** según el pod:
-  - GPU (RTX 5090/Blackwell): `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128`
-  - CPU: `pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu`
-- **SAM3** (no está en PyPI): `pip install git+https://github.com/facebookresearch/sam3.git`
-
-```bash
-pip install -r requirements.txt   # deps (torch y sam3 van aparte)
-pip install -e .                  # src/ como paquete editable -> import src
-```
-
-- Config activo: `CONFIG_FILENAME` en `.env`. Las rutas se resuelven con
-  [`src.utils.get_abs_path(...)`](src/utils.py) contra la raíz del proyecto — nunca
-  hardcodear.
-- Datos reales (git-ignored): videos en `data/raw/`, modelo en `assets/sam3/`, pesos
-  YOLO en `assets/yolo/best.pt`.
-- **Docker (RunPod):** `docker compose --env-file .env -f docker/docker-compose.yml up --build -d`.
-- **La inferencia requiere GPU.** Lo que no llama a SAM3 (rutas, conteo de frames,
-  selección del dataset, lint) corre en cualquier entorno.
+- **Licencia:** [Apache License 2.0](LICENSE).
+- **Créditos y atribuciones:**
+  - **Meta AI** — [SAM 3](https://github.com/facebookresearch/sam3) (segmentación).
+  - **ByteTrack / BoT-SORT** vía `trackers` y **Roboflow Supervision** (asociación y
+    utilidades de tracking).
+  - **Ultralytics YOLO** (detector afinado), **Hugging Face Transformers** (carga de SAM 3).
+  - **Anthropic — Claude (Opus 4.8)** como asistente de programación durante el desarrollo.
+  - **UAQ Team — Copa FutBotMX 2026.** Filtro de Kalman, homografía multi-feature, capa
+    métrica y overlay narrativo: implementación propia.
 
 ---
 
-## Notebooks
+### Más documentación
 
-- [`cookbook_pipeline.ipynb`](notebooks/cookbook_pipeline.ipynb) — **recetario de la
-  API (empieza aquí)**.
-- [`fase_3_benchmark_models/00_phase2_cost_smoke.ipynb`](notebooks/fase_3_benchmark_models/00_phase2_cost_smoke.ipynb)
-  — smoke de costo (máscaras casi gratis).
-- [`fase_3_benchmark_models/01_benchmark_detectors.ipynb`](notebooks/fase_3_benchmark_models/01_benchmark_detectors.ipynb)
-  — Fase 1: eficiencia de detectores.
-- [`fase_3_benchmark_models/02_benchmark_trackers.ipynb`](notebooks/fase_3_benchmark_models/02_benchmark_trackers.ipynb)
-  — Fase 2: trackers 2×2 (consistencia).
-- [`fase_3_benchmark_models/03_benchmark_analysis.ipynb`](notebooks/fase_3_benchmark_models/03_benchmark_analysis.ipynb)
-  — Fase 3: gráficas de análisis.
-- [`fase_0/`](notebooks/fase_0/) — exploración inicial (spikes SAM3).
-
-> **Antes de escribir un notebook nuevo, revisa el
-> [recetario](notebooks/cookbook_pipeline.ipynb)**: casi todo lo útil ya está
-> empaquetado en `src/` y documentado ahí, para no rehacer cosas desde cero.
-
----
-
-## Metodología (SDD)
-
-El repo sigue **Spec-Driven Development** ([`.specs/constitution.md`](.specs/constitution.md)):
-por cada tarea atómica se escribe `spec.md → plan.md → tasks.md` **antes** de tocar
-código. El trabajo y los documentos están en español. Lint/formato: `ruff check .` /
-`black .`.
-
----
-
-## Estructura del repo
-
-```
-src/core/    inferencia: frame_extraction, sam3_loader, segmentation, detectors/,
-             trackers/, overlay, video_writer, pipeline, tracking, inference (fachada),
-             batch, track_overlay, inference_schema
-src/data/    preparación del dataset: metadata, eval_frames
-src/eval/    benchmark sin-GT: benchmark.py
-configs/     {NN}_{EXP}.json (rutas relativas + parámetros)
-data/raw/    videos .MOV (git-ignored)
-assets/      sam3/ + yolo/ (git-ignored) + db_metadata.csv, testing_frames.csv
-notebooks/   recetario + benchmark + exploración
-testing/     scripts manuales (no pytest)
-.specs/      Spec-Driven Development (una carpeta por tarea)
-```
+- [`docs/README.md`](docs/README.md) — documentación por fases (00 fundamentos … 11 Kalman).
+- [`notebooks/cookbook_pipeline.ipynb`](notebooks/cookbook_pipeline.ipynb) — recetario de la API.
+- [`CLAUDE.md`](CLAUDE.md) — guía de arquitectura para contribuir.
+- [`.specs/`](.specs/) — Spec-Driven Development (una carpeta por tarea).
