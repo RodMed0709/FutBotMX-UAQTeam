@@ -289,7 +289,7 @@ def render_broadcast_overlay(
     *,
     layout: int = 2,
     goal_source: str = "strict",
-    use_kalman: bool = False,
+    use_kalman: bool = True,
     banner_secs: float = DEFAULT_BANNER_SECS,
     max_items: int = DEFAULT_MAX_ITEMS,
     margin_px: int = DEFAULT_MARGIN_PX,
@@ -330,7 +330,7 @@ def render_broadcast_overlay(
         metric = compute_metric_positions(tracks_json)
     except Exception:
         degradado = True
-    # Kalman como fuente de posiciones (flag, default off): refina el balón una sola vez; el mismo
+    # Kalman como fuente de posiciones (flag, default on): refina el balón una sola vez; el mismo
     # `kres` alimenta el panel de velocidad. Con el flag apagado, `metric` queda crudo (idéntico).
     kres = None
     if use_kalman and metric is not None:

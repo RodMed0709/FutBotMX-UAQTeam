@@ -46,7 +46,7 @@ render_broadcast_overlay(
     *,
     layout: int = 2,                  # 1 | 2 (disposición de paneles)
     goal_source: str = "strict",      # "strict" | "geometric"
-    use_kalman: bool = False,         # refinar cinemática con Kalman (fase_6)
+    use_kalman: bool = True,          # refinar cinemática con Kalman (fase_6)
     banner_secs: float = ...,         # duración del banner "¡Gooool!"
     max_items: int = ...,             # tope de la lista dinámica de eventos
     margin_px: int = ...,             # margen alrededor del video
@@ -64,8 +64,9 @@ render_broadcast_overlay(
 | `render_broadcast_overlay(...)` | [`event_broadcast_overlay.py:287`](../src/core/event_broadcast_overlay.py#L287) | Compone el video de espectador: marcador 0-0 con color de portería, banner de gol deslizante, panel de posesión/control, lista dinámica de eventos (tope `max_items`), minimapa cenital + heatmap a los lados, campo reproyectado sobre el video. Renderiza su **propio** minimapa desde la métrica por líneas (no usa `minimap_pipeline`). |
 
 > **Flag `use_kalman`** (de [`kalman_position_source`](11_kalman.md)): conmuta la fuente
-> de cinemática entre diferencias finitas y Kalman. Decisión pendiente: encenderlo por
-> defecto.
+> de cinemática entre diferencias finitas y Kalman. **Encendido por defecto** (entregable):
+> la ablación respalda goles 1=1 sin falsos positivos, v_max 154.6→126.9 cm/s y ~352 frames
+> de oclusión rellenados.
 
 ## Overlay 1 vs Overlay 2
 
