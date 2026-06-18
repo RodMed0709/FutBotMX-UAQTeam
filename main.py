@@ -55,6 +55,13 @@ class StageResult:
     detail: str = ""
 
 
+@dataclass
+class DemoChoice:
+    nombre: str
+    vista: str
+    clip_path: Path
+
+
 # --- consola (rich) ------------------------------------------------------------
 
 
@@ -206,6 +213,70 @@ def choose_pipeline(
         default=False,
         vista=vista,
     )
+
+
+# --- T4 bis: selección de clip demo (flag --demo) ------------------------------
+
+
+def load_demo_choices() -> list[DemoChoice]:
+    """Demos del manifiesto **presentes en local** (fuente de verdad compartida).
+
+    Lee ``assets/bootstrap_manifest.json``, filtra el paquete ``demo`` y devuelve solo
+    los ítems cuyo clip existe en disco. Si el manifiesto no existe, devuelve ``[]``.
+    """
+    from src.bootstrap_data import is_present, load_manifest, select_package
+
+    try:
+        manifest = load_manifest()
+    except FileNotFoundError:
+        return []
+
+    choices: list[DemoChoice] = []
+    for item in select_package(manifest["items"], "demo"):
+        clip = next(
+            (r for r in item.get("recursos", []) if r.get("tipo") == "clip"), None
+        )
+        if clip is None or not is_present(clip):
+            continue
+        choices.append(
+            DemoChoice(
+                nombre=item["nombre"],
+                vista=item.get("vista", DEFAULT_VISTA),
+                clip_path=PROJECT_ROOT / clip["destino"],
+            )
+        )
+    return choices
+
+
+def choose_demo(console) -> DemoChoice:
+    """Selector interactivo de clip demo. Falla claro si no hay demos presentes."""
+    choices = load_demo_choices()
+    if not choices:
+        console.print(
+            "[bold red]No hay clips demo en local.[/] Corre "
+            "[bold]python -m src.bootstrap_data[/] (opción demos) para descargarlos."
+        )
+        raise SystemExit(2)
+
+    if not sys.stdin.isatty():
+        console.print(
+            "[bold red]Terminal no interactiva:[/] --demo requiere una terminal "
+            "interactiva para elegir el clip."
+        )
+        raise SystemExit(2)
+
+    import questionary
+
+    selected = questionary.select(
+        "Elige un clip demo:",
+        choices=[
+            questionary.Choice(f"{c.nombre}  ({c.vista})", value=c) for c in choices
+        ],
+    ).ask()
+    if selected is None:
+        console.print("[bold red]Selección cancelada.[/]")
+        raise SystemExit(130)
+    return selected
 
 
 # --- T5: rutas nativas ---------------------------------------------------------
@@ -421,12 +492,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Hub end-to-end del pipeline FutBot MX sobre un video.",
     )
     parser.add_argument(
-        "video", help="ruta del video (relativa a la raíz del proyecto o absoluta)"
+        "video",
+        nargs="?",
+        default=None,
+        help="ruta del video (relativa a la raíz del proyecto o absoluta); "
+        "opcional si se usa --demo",
     )
     parser.add_argument(
         "--default",
         action="store_true",
         help="corre la config por defecto del proyecto sin preguntar nada",
+    )
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="demo guiada: el primer paso es elegir un clip demo del manifiesto. "
+        "Sobreescribe la selección de entrada (--default/--vista/video); combinable "
+        "con --overwrite",
     )
     parser.add_argument(
         "--overwrite",
@@ -448,8 +530,20 @@ def run(args: argparse.Namespace) -> int:
     config = _load_config()
     outputs_dir = _outputs_dir(config)
 
-    video = validate_video(args.video, console)
-    choice = choose_pipeline(args.default, args.vista, config, console)
+    # --demo sobreescribe la selección de entrada (--default/--vista/video); el primer
+    # paso es elegir el clip demo. --overwrite queda intacto (se usa más abajo).
+    if args.demo:
+        demo = choose_demo(console)
+        video = validate_video(str(demo.clip_path), console)
+        choice = choose_pipeline(False, demo.vista, config, console)
+    else:
+        if args.video is None:
+            console.print(
+                "[bold red]Falta el video:[/] pasa una ruta o usa [bold]--demo[/]."
+            )
+            raise SystemExit(2)
+        video = validate_video(args.video, console)
+        choice = choose_pipeline(args.default, args.vista, config, console)
     run_label = derive_run_label(choice)
     paths = plan_outputs(video.stem, run_label, outputs_dir)
 
