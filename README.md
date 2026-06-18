@@ -1,11 +1,14 @@
 # FutBot MX 2026 — UAQ Team
 
-**Detección, segmentación, seguimiento y análisis de eventos** de partidos de fútbol
-robótico (Copa FutBotMX, categoría Profesional). El sistema toma el video de un partido y
-produce, por cada robot y por la pelota, **máscaras**, **cajas** y **trayectorias con
-identidad estable**, y sobre cámara superior además **proyecta el juego a un campo métrico
-(cm)** para detectar **goles, posesión y faltas** y componer un **video narrativo de
-espectador**.
+**Sistema de Detección, Segmentación, Seguimiento y Análisis de Eventos** para partidos de fútbol robótico (Copa FutBotMX - Categoría Profesional).
+
+Este sistema procesa videos en crudo para extraer métricas deportivas y generar visualizaciones analíticas. A partir del flujo de video original, nuestra arquitectura ejecuta un _pipeline_ automatizado que proporciona:
+
+- **Inferencia de Visión:** Extracción de máscaras de segmentación y _bounding boxes_ para cada robot, portería, cancha y balón.
+- **Seguimiento Multi-Objeto (MOT):** Construcción de trayectorias espacio-temporales manteniendo identidades estables frente a oclusiones.
+- **Mapeo a Coordenadas Métricas:** Transformación geométrica desde la perspectiva de cámara superior hacia un plano bidimensional métrico (cm) del campo de juego.
+- **Detección Algorítmica de Eventos:** Evaluación de la telemetría para identificar goles, calcular tiempos de posesión y detectar faltas o colisiones.
+- **Síntesis Narrativa:** Composición final de un video analítico enriquecido con telemetría sobrepuesta, diseñado tanto para el espectador como para evaluación técnica.
 
 ![Broadcast — video de espectador](assets/readme/gifs/broadcast_IMG_9933_5m30.gif)
 
@@ -17,65 +20,59 @@ espectador**.
 
 ## 1. Descripción y arquitectura de la solución
 
-El sistema se organiza en **dos capas**:
+El _pipeline_ ha sido diseñado bajo una arquitectura modular desacoplada para optimizar los recursos computacionales y facilitar la experimentación. Se divide en dos capas principales:
 
-- **Capa A — percepción (GPU):** `detector/segmentador → tracker`. Aplica a **cualquier**
-  clip y produce máscaras + `obj_id` estables.
-- **Capa B — análisis métrico (CPU):** sobre **cámara superior**, proyecta a cm reales y
-  deriva métricas y eventos. Lee el JSON de tracking; no re-infiere.
+1. **Capa A (Percepción - GPU):** Encargada de la visión pura. Ejecuta la detección, segmentación y seguimiento continuo. Independientemente del tipo de clip, genera máscaras precisas y mantiene la identidad de los objetos (`obj_id`) a lo largo del tiempo, serializando los resultados geométricos dentro de un archivo JSON.
+2. **Capa B (Análisis Métrico - CPU):** Encargada de la telemetría y reglas del juego. Lee el archivo JSON de tracking emitido por la Capa A. Al procesar tomas de cámara superior, aplica transformaciones geométricas para proyectar el juego a una escala de centímetros reales, evaluando eventos y métricas de forma inmediata y sin requerir re-inferencia de modelos pesados.
 
 ### Enfoque técnico e innovación
 
-**1) Segmentación con SAM 3 + detector afinado (innovación sobre el modelo base).**
-`sam3_text` segmenta por *prompt de texto* ("robot", "orange ball"). La innovación es
-`yolo_sam3`: un **YOLO afinado** con auto-etiquetas generadas por SAM 3 (sobre los 103
-videos NO-testing) localiza cajas rápido y SAM 3 segmenta **dentro** de cada caja
-(box-prompt), acoplando dos arquitecturas complementarias.
+**1) Pipeline de Segmentación Zero-Shot a Fine-Tuned (SAM 3 + YOLO)**
 
-**2) Tracking con identidad estable.** Las máscaras se reducen a cajas y se asocian frame a
-frame con **ByteTrack** o **BoT-SORT** (un tracker por clase) hacia `obj_id` **globalmente
-únicos**, en streaming (sin OOM sobre el video completo).
+Para la etapa de detección y segmentación, se implementó una arquitectura de dos etapas que extiende la capacidad del modelo base mediante la automatización de etiquetas:
 
-**3) Homografía al campo métrico.** Se estima una homografía por frame que lleva la imagen
-al campo cenital oficial (**243 × 182 cm**, líneas con *inset* de 12 cm, círculo central de
-radio 30 cm). Con correspondencias mundo←imagen (líneas blancas + esquinas + porterías) se
-resuelve la matriz `H ∈ ℝ³ˣ³` por mínimos cuadrados robustos (RANSAC) y la proyección de un
-punto es
+- **Generación de Auto-etiquetas (Zero-shot):** Inicialmente, se implementó `sam3_text` aprovechando su capacidad de segmentación por lenguaje natural (_text-prompts_ como "robot", "orange ball") para procesar un corpus de entrenamiento (103 videos excluidos del conjunto de pruebas).
+- **Entrenamiento de Detector Específico (YOLO_SAM3):** Utilizando estas auto-etiquetas, se realizó un _fine-tuning_ sobre un modelo YOLO. En el flujo de inferencia, este modelo asume el rol de detector de alta velocidad, generando _bounding boxes_ precisos que alimentan a SAM 3 a manera de _box-prompts_ para extraer la máscara final (`yolo_sam3`).
 
-```
-[x' y' w']ᵀ = H · [u v 1]ᵀ ,   (x, y)_cm = (x'/w', y'/w')
-```
+**2) Tracking con identidad estable.**
 
-Para reducir *jitter* entre frames se aplica un suavizado EMA sobre `H` normalizada
-(`H₃₃ = 1`). El camino consolidado (ajuste a líneas, `homography_multifeature.py`) alcanza
-**~9–23 cm** de error.
+El sistema transforma las detecciones aisladas en trayectorias coherentes y persistentes mediante un esquema de _tracking_ algorítmico continuo:
+
+- **Arquitectura de Seguimiento Paralelo:** Se procesa el flujo de video en _streaming_, aplicando algoritmos robustos (**ByteTrack** / **BoT-SORT**) frame a frame.
+- **Estabilidad Global:** Al aislar un _tracker_ por cada clase específica, el sistema asegura que cada máscara detectada se asocie correctamente a un historial de movimiento, generando trayectorias (`obj_id`) globalmente únicas y estables para el balón y los robots durante la totalidad del partido.
+
+**3. Mapeo Homográfico al Campo Métrico**
+
+Para traducir el espacio de píxeles a coordenadas físicas espaciales, el sistema estima una homografía por _frame_ que proyecta la imagen hacia el plano cenital oficial del torneo (dimensiones de **243 × 182 cm**, con _inset_ de 12 cm en líneas perimetrales y círculo central de 30 cm de radio).
+
+- **Estimación Robusta (RANSAC):** Extrayendo correspondencias directas entre el mundo físico y la imagen (líneas blancas, esquinas y porterías), se resuelve la matriz homográfica $H \in \mathbb{R}^{3 \times 3}$ mediante mínimos cuadrados robustos.
+- **Proyección Geométrica:** La transformación de un punto en píxeles $(u, v)$ a su coordenada métrica se define formalmente como:
+
+$$\begin{bmatrix} x' \\ y' \\ w' \end{bmatrix} = H \cdot \begin{bmatrix} u \\ v \\ 1 \end{bmatrix}$$
+
+Donde las coordenadas finales en centímetros sobre el plano del campo se obtienen mediante la normalización: $(x, y)_{cm} = (x'/w', y'/w')$.
+
+- **Estabilización Temporal:** Para mitigar el _jitter_ o vibración de la cámara entre _frames_, se aplica un suavizado de Media Móvil Exponencial (EMA) sobre la matriz $H$ normalizada ($H_{33} = 1$). Este _pipeline_ consolidado (`homography_multifeature.py`) logra acotar el error de proyección a un rango de **9 a 23 cm**, garantizando alta fidelidad para el cálculo de métricas posteriores.
 
 **4) Cinemática y filtro de Kalman propio (innovación).** La velocidad base es por
-**diferencias finitas**, `v = ‖pₜ − pₜ₋₁‖ / Δt` con `Δt = (f₂−f₁)/fps`, con corte de
+**diferencias finitas**, $v = \frac{\|p_t - p_{t-1}\|}{\Delta t}$ con $\Delta t = \frac{f_2 - f_1}{\text{fps}}$, con corte de
 outliers y suavizado. Encima corre un **filtro de Kalman de velocidad constante 2D, escrito
-desde cero** (estado `x = [pₓ, p_y, vₓ, v_y]`), que aporta velocidad físicamente suave,
+desde cero** (estado $x = [p_x, p_y, v_x, v_y]^T$), que aporta velocidad físicamente suave,
 **relleno de oclusión** (predict-only) y rechazo robusto de outliers:
 
-```
-Predicción:  x⁻ = F(Δt) x ,           P⁻ = F P Fᵀ + Q(Δt)
-Innovación:  y  = z − H x⁻ ,          S  = H P⁻ Hᵀ + R
-Ganancia:    K  = P⁻ Hᵀ S⁻¹
-Corrección:  x  = x⁻ + K y ,          P  = (I − K H) P⁻
-Oclusión:    x  = x⁻ , P = P⁻         (sin medición; la incertidumbre crece)
-```
+- **Predicción:** $x^- = F(\Delta t) x$, $\quad P^- = F P F^T + Q(\Delta t)$
+- **Innovación:** $y = z - H x^-$, $\quad S = H P^- H^T + R$
+- **Ganancia:** $K = P^- H^T S^{-1}$
+- **Corrección:** $x = x^- + K y$, $\quad P = (I - K H) P^-$
+- **Oclusión:** $x = x^-$, $\quad P = P^-$ (sin medición; la incertidumbre crece)
 
-con `H = [[1,0,0,0],[0,1,0,0]]`, `Q` derivada de ruido blanco de aceleración (`σ_a`),
-`R = σ_z² I` calibrada del error de homografía (`σ_z ≈ 15 cm`), y **gating de Mahalanobis**
-`NIS = yᵀ S⁻¹ y` contra `χ²₂(0.99) = 9.21` (reemplaza el corte duro de velocidad sin tirar
+con $H = \begin{bmatrix} 1 & 0 & 0 & 0 \\ 0 & 1 & 0 & 0 \end{bmatrix}$, $Q$ derivada de ruido blanco de aceleración ($\sigma_a$),
+$R = \sigma_z^2 I$ calibrada del error de homografía ($\sigma_z \approx 15\text{ cm}$), y **gating de Mahalanobis**
+$\text{NIS} = y^T S^{-1} y$ contra $\chi^2_2(0.99) = 9.21$ (reemplaza el corte duro de velocidad sin tirar
 el track). Esto reduce la **varianza de aceleración un 98–100 %** frente a diferencias
 finitas y elimina picos de velocidad imposibles (p. ej. v_max de balón 196.3 → 116.4 cm/s).
 
-**5) Detección algorítmica de eventos.** Sobre las posiciones en cm: **gol estricto** vs
-tiro (geometría de cruce de línea de portería), **posesión vs control** (proximidad
-balón-robot con histéresis temporal), **faltas de campo** (fuera, área, *pushing*), zonas
-(mitades/tercios) y **mapa de calor** de ocupación. El entregable es el **video de
-espectador** (`event_broadcast_overlay`): marcador, banner de gol, panel de posesión,
-*feed* de eventos, minimapa cenital + heatmap y la homografía embebida.
+**5) Detección algorítmica de eventos.** Sobre las posiciones en cm: **gol estricto** vs tiro (geometría de cruce de línea de portería), **posesión vs control** (proximidad balón-robot con histéresis temporal), **faltas de campo** (fuera, área, _pushing_), zonas (mitades/tercios) y **mapa de calor** de ocupación. El entregable es el **video de espectador** (`event_broadcast_overlay`): marcador, banner de gol, panel de posesión, _feed_ de eventos, minimapa cenital + heatmap y la homografía embebida.
 
 ---
 
@@ -90,12 +87,11 @@ espectador** (`event_broadcast_overlay`): marcador, banner de gol, panel de pose
                                         | botsort                        zonas/heatmap/Kalman      faltas          espectador)
 ```
 
-Una **única puerta de entrada** ([`run_inference`](src/core/inference.py)) resuelve el
-muestreo de frames, el render y el esquema de salida según el modo
-(`segmentation` | `tracking`). Detector y tracker son **piezas intercambiables**
-([`src/core/detectors/`](src/core/detectors/), [`src/core/trackers/`](src/core/trackers/)),
-y añadir una clase es **solo configuración**. El hub [`main.py`](main.py) orquesta el flujo
-completo end-to-end (ver §7).
+El diseño del sistema prioriza la mantenibilidad y la escalabilidad mediante un patrón arquitectónico altamente desacoplado:
+
+- **Punto de Entrada Unificado:** El módulo [`run_inference`](src/core/inference.py) estandariza la ingesta de datos, resolviendo el muestreo de _frames_, la renderización y la serialización de salidas, adaptándose dinámicamente al modo de ejecución requerido (`segmentation` o `tracking`).
+- **Diseño Intercambiable (Plug-and-Play):** Los módulos de percepción visual y seguimiento espacial son componentes independientes. Alternar entre modelos (ej. de `sam3_text` a `yolo_sam3`, o de `bytetrack` a `botsort`) se gestiona a nivel de configuración en [`src/core/detectors/`](src/core/detectors/) y [`src/core/trackers/`](src/core/trackers/). Escalar el sistema para detectar nuevas clases requiere únicamente ajustar los parámetros de configuración, sin necesidad de refactorizar el código base.
+- **Orquestación End-to-End:** El controlador principal [`main.py`](main.py) automatiza el flujo completo, garantizando la transición fluida de la telemetría desde la inferencia en crudo hasta la síntesis del _broadcast_ analítico para el espectador (ver §7).
 
 #### Capa A — percepción (GPU): detección/segmentación → tracking
 
@@ -122,8 +118,9 @@ completo end-to-end (ver §7).
                                       └──────────────────────────────┘
 ```
 
-El `tracking JSON` es la **frontera dura**: todo el post-proceso lee de ahí y no sabe qué
-detector/tracker lo generó. Piezas desmontables vía registro: `get_detector` y `get_tracker`.
+**Desacoplamiento Estricto mediante JSON:** El `tracking JSON` representa el único canal de comunicación entre las capas del sistema. Funciona como el formato estándar de intercambio de datos: el post-proceso extrae de ahí las trayectorias (`obj_id` estables y máscaras) sin crear dependencias circulares con los modelos de visión que las originaron.
+
+**Arquitectura de Piezas Intercambiables:** La selección y ejecución de los modelos de visión se realiza mediante funciones de enrutamiento (`get_detector` y `get_tracker`). Este diseño modular permite desmontar e intercambiar cualquier detector o algoritmo de seguimiento directamente desde la configuración, facilitando la escalabilidad del proyecto.
 
 #### Capa B — post-proceso (CPU, cámara superior): homografía → eventos
 
@@ -151,13 +148,23 @@ detector/tracker lo generó. Piezas desmontables vía registro: `get_detector` y
              minimapa cenital, heatmap, homografía embebida)
 ```
 
+**De Píxeles a Telemetría:** El archivo `tracking JSON` se procesa mediante una base compartida que calcula la homografía (configurable entre `"lines"` o `"masks"`). Esta etapa traduce las cajas de los objetos a posiciones exactas en centímetros (`xy_cm`) para cada _frame_.
+
+**Análisis Multidimensional:** Las posiciones físicas en centímetros se distribuyen simultáneamente a distintos motores lógicos:
+
+- **Física y Estado:** Un Filtro de Kalman suaviza el movimiento y resuelve oclusiones.
+- **Lógica Deportiva:** Evaluadores algorítmicos detectan goles, analizan tiempos de posesión y segmentan ocupación zonal.
+- **Distribución Espacial:** Generación de _heatmaps_ dinámicos basados en ocupación centimétrica.
+
+**Renderizado del Espectador:** Toda la lógica converge en el módulo `event_broadcast_overlay`. Este _script_ genera el entregable definitivo: compone la vista original superpuesta con telemetría en tiempo real, minimapas cenitales, _banners_ de goles y marcadores de posesión.
+
 ### Metodología de desarrollo — Spec-Driven Development (SDD)
 
-El repositorio sigue **SDD** ([`.specs/constitution.md`](.specs/constitution.md)): por cada
-tarea atómica se escribe `spec.md → plan.md → tasks.md` **antes** de tocar código, y cada
-tarea vive en su propia carpeta `.specs/<tarea>/`. El trabajo y la documentación están en
-**español**; lint/formato con `ruff check .` / `black .`. La documentación por fases del
-sistema está en [`docs/`](docs/README.md).
+Para garantizar la mantenibilidad, escalabilidad y trazabilidad del código, el proyecto se desarrolló bajo el paradigma **Spec-Driven Development (SDD)** (reglas detalladas en [`.specs/constitution.md`](.specs/constitution.md)).
+
+- **Planificación Atómica:** El flujo de trabajo prohíbe la escritura de código sin diseño previo. Por cada tarea o _feature_, se redacta la secuencia `spec.md → plan.md → tasks.md`. Cada requerimiento se aísla en su propio directorio dentro de `.specs/<tarea>/`.
+- **Calidad y Estilo de Código:** La base de código cuenta con integración de _linters_ y formateadores estrictos. Se utiliza `ruff check .` y `black .` para garantizar un código limpio, legible y estandarizado.
+- **Documentación Centralizada:** La totalidad del código, _commits_ y documentación técnica están redactados en **español**. La arquitectura detallada y el registro por fases del sistema se encuentran disponibles en el directorio [`docs/`](docs/README.md).
 
 ---
 
@@ -168,8 +175,8 @@ sistema está en [`docs/`](docs/README.md).
 Detección + segmentación por clase y tracking con identidad estable, sobre clips genéricos
 (< 1 min, no cámara superior):
 
-| Segmentación (SAM 3) | Tracking `obj_id` |
-|---|---|
+| Segmentación (SAM 3)                                                           | Tracking `obj_id`                                                       |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
 | ![segmentación](assets/readme/png/segmentacion_video-714_singular_display.png) | ![tracking](assets/readme/gifs/tracking_video-714_singular_display.gif) |
 
 ### 3.2 Análisis avanzado — cámara superior (el entregable)
@@ -177,8 +184,8 @@ Detección + segmentación por clase y tracking con identidad estable, sobre cli
 Video narrativo, mapas de calor dinámicos, posesión con métricas temporales y posiciones en
 cm. Ejemplos sobre dos partidos distintos (`IMG_9933`, `IMG_9938`):
 
-| Broadcast (espectador) | Mapa de calor (ocupación) | Zonas / presencia |
-|---|---|---|
+| Broadcast (espectador)                                      | Mapa de calor (ocupación)                                    | Zonas / presencia                                           |
+| ----------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------- |
 | ![broadcast](assets/readme/png/broadcast_IMG_9933_8m00.png) | ![heatmap](assets/readme/png/heatmap_ball_IMG_9933_5m30.png) | ![zonas](assets/readme/png/zonas_tercios_IMG_9933_5m30.png) |
 
 **Velocidad: crudo vs Kalman** (suavizado físico + relleno de oclusión):
@@ -190,31 +197,30 @@ aceleración baja **98–100 %** y se rellenan los huecos de oclusión sin falso
 
 ### 3.3 Desempeño cuantitativo — benchmark sin ground-truth
 
-Como aún no hay anotación manual, **no** se mide exactitud (mAP/MOTA/mIoU) sino
-**eficiencia y consistencia**, sobre 5 videos de testing (seed=36), tracking acotado a 2500
-frames. Drivers en [`notebooks/fase_3_benchmark_models/`](notebooks/fase_3_benchmark_models/).
-Honesto: el YOLO se entrenó solo con videos NO-testing, así que el split de testing está
-intocado para ambos detectores.
+Ante la ausencia actual de un conjunto de datos etiquetado manualmente, la evaluación no reporta métricas supervisadas tradicionales (como mAP, MOTA o mIoU). En su lugar, el _benchmark_ evalúa rigurosamente la **eficiencia computacional y la consistencia espacio-temporal**.
+
+- **Configuración del Experimento:** La evaluación de rendimiento se ejecuta sobre un _split_ de prueba aislado compuesto por 5 videos (`seed=36`), con el rastreo acotado a 2,500 _frames_ continuos. Los _scripts_ de ejecución y análisis se encuentran disponibles en [`notebooks/fase_3_benchmark_models/`](notebooks/fase_3_benchmark_models/).
+- **Prevención de Fuga de Datos (Data Leakage):** Para garantizar la validez metodológica del _benchmark_, el conjunto de validación se mantuvo estrictamente separado. El _fine-tuning_ del modelo YOLO se realizó de forma exclusiva sobre un subconjunto de entrenamiento disjunto (103 videos). Esto asegura una evaluación imparcial (_zero-data contamination_) en el entorno de pruebas para todas las arquitecturas.
 
 **Fase 1 — eficiencia del detector**
 
 ![Fase 1](assets/benchmark/fase1_detectores.png)
 
-| Detector | FPS (↑) | VRAM pico MB (↓) |
-|---|---|---|
-| `sam3_text` | **1.82** | **2157** |
-| `yolo_sam3` | 1.71 | 3151 |
+| Detector    | FPS (↑)  | VRAM pico MB (↓) |
+| ----------- | -------- | ---------------- |
+| `sam3_text` | **1.82** | **2157**         |
+| `yolo_sam3` | 1.71     | 3151             |
 
 **Fase 2 — trackers (2×2)**
 
 ![Fase 2](assets/benchmark/fase2_trackers.png)
 
-| Config | FPS (↑) | VRAM MB (↓) | frag_rate (↓) | tracklet_len (↑) |
-|---|---|---|---|---|
-| `sam3_text+bytetrack` | 2.15 | **2157** | 0.035 | **192.7** |
-| `sam3_text+botsort` | 1.83 | **2157** | 0.061 | 134.5 |
-| `yolo_sam3+bytetrack` | **2.25** | 3151 | 0.035 | 186.3 |
-| `yolo_sam3+botsort` | 1.95 | 3151 | **0.011** | 146.5 |
+| Config                | FPS (↑)  | VRAM MB (↓) | frag_rate (↓) | tracklet_len (↑) |
+| --------------------- | -------- | ----------- | ------------- | ---------------- |
+| `sam3_text+bytetrack` | 2.15     | **2157**    | 0.035         | **192.7**        |
+| `sam3_text+botsort`   | 1.83     | **2157**    | 0.061         | 134.5            |
+| `yolo_sam3+bytetrack` | **2.25** | 3151        | 0.035         | 186.3            |
+| `yolo_sam3+botsort`   | 1.95     | 3151        | **0.011**     | 146.5            |
 
 ![Fase 2 — ejes](assets/benchmark/fase2_ejes.png)
 
@@ -238,46 +244,82 @@ exactitud llegará con el ground-truth (ver §«Lo que falta»).
 
 ## 5. Requisitos de hardware y software
 
-- **Hardware:** GPU NVIDIA para la inferencia (probado en **RTX 5090 / Blackwell**; el
-  detector `yolo_sam3` usa ~3.1 GB de VRAM, `sam3_text` ~2.1 GB). La **Capa B**
-  (homografía, métrica, eventos, broadcast) corre en **CPU**.
-- **Software:** **Python 3.11**, PyTorch (CUDA cu128 o CPU), **SAM 3** (Meta), HF
-  Transformers, OpenCV, `supervision`/`trackers` (ByteTrack/BoT-SORT), Ultralytics YOLO,
-  `questionary` + `rich` (consola del hub). Lista completa en
-  [`requirements.txt`](requirements.txt).
+**Hardware.** Los requisitos no se declaran a ojo: se derivan de lo que exige el código y
+de lo que se midió al correrlo.
+
+- **Lo que exige el código:** SAM 3 carga en CUDA si está disponible y **cae a CPU** en
+  automático ([`sam3_loader.py`](src/core/sam3_loader.py)), así que la GPU no es un
+  requisito *duro* sino **práctico**: en CPU la inferencia (Capa A) es inviable por tiempo.
+- **Consumo medido:** el pico de VRAM está instrumentado por video
+  (`torch.cuda.max_memory_allocated`, [`batch.py`](src/core/batch.py)) y quedó registrado
+  en el benchmark — **~2.1 GB** (`sam3_text`) y **~3.1 GB** (`yolo_sam3`), ver
+  [`detectors.csv`](outputs/benchmark/detectors.csv). De ahí la recomendación de **GPU
+  NVIDIA con ≥4 GB** (pico medido + margen). El pico lo domina el modelo en `bfloat16`, no
+  la resolución del clip, por eso es estable entre videos.
+- **Validado en:** **RTX 5090 / Blackwell** (banco de pruebas; es un "probado en", no un
+  mínimo certificado — no incluye overhead de SO/display ni GPU compartida).
+- **Post-proceso (Capa B):** homografía, métrica, eventos y broadcast **no llaman a SAM 3
+  ni a CUDA** — corren **solo en CPU** y se reproducen en cualquier laptop a partir de un
+  tracking JSON, **sin GPU**.
+
+**Software**
+
+- **Python 3.11**, PyTorch (CUDA cu128 o CPU), **SAM 3** (Meta), HF Transformers, OpenCV,
+  `supervision`/`trackers` (ByteTrack/BoT-SORT), Ultralytics YOLO, `questionary` + `rich`
+  (consola del hub). Lista completa en [`requirements.txt`](requirements.txt).
 
 ---
 
 ## 6. Instalación y reproducción
 
+Hay **dos modos** equivalentes; ambos leen los mismos insumos y el mismo config.
+Elige **Local** para desarrollo con control fino, o **Docker/RunPod** para una
+reproducción aislada en el pod GPU.
+
+### Modo A — Local (venv o conda `futbot26`, Python 3.11)
+
 ```bash
 git clone <url_del_repositorio>
 cd futbot
 
-# Entorno aislado (venv local o conda futbot26), Python 3.11
-# Torch va aparte según el destino:
+# Entorno aislado, Python 3.11. Torch va aparte según el destino:
 #   GPU (Blackwell): pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 #   CPU:             pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 pip install git+https://github.com/facebookresearch/sam3.git   # SAM 3 (no está en PyPI)
 pip install -e .                                                 # src/ como paquete editable
+
+python main.py data/raw/.../clip.mp4 --default                   # corrida end-to-end
 ```
 
-**Configuración:** el config activo se elige con `CONFIG_FILENAME` en `.env`
+### Modo B — Docker / RunPod
+
+`pip install -e .` ya se ejecuta en el build, así que **no hay pasos manuales** dentro
+del contenedor. El único volumen es el bind-mount del workspace (`../` →
+`/${CONTAINER_WORKSPACE_DIR}`): `data/raw` y `assets/sam3` son archivos reales del repo
+(sin volúmenes de datos aparte ni symlinks).
+
+```bash
+# Construir y levantar (servicio: futbotmx26)
+docker compose --env-file .env -f docker/docker-compose.yml up --build -d
+
+# Ejecutar el hub dentro del contenedor
+docker compose --env-file .env -f docker/docker-compose.yml \
+  exec futbotmx26 python main.py data/raw/.../clip.mp4 --default
+```
+
+**Configuración (ambos modos):** el config activo se elige con `CONFIG_FILENAME` en `.env`
 (`configs/01_yolo_sam3_config.json`). Las rutas se resuelven con
 [`src.utils.get_abs_path`](src/utils.py) contra la raíz — nunca se hardcodean.
 
-**Docker / RunPod:**
-`docker compose --env-file .env -f docker/docker-compose.yml up --build -d`.
-
 **Insumos no versionados requeridos** (git-ignored; cada quien los provee):
 
-| Insumo | Ruta (config) | Para qué |
-|---|---|---|
-| Videos `.MOV` | `data/raw/` | dataset |
-| Modelo SAM 3 (`sam3.pt` + HF) | `assets/sam3/` | segmentación |
-| YOLO afinado `best.pt` | `assets/yolo/best.pt` | detector `yolo_sam3` |
-| `.env` | raíz | `CONFIG_FILENAME`, secretos |
+| Insumo                        | Ruta (config)         | Para qué                    |
+| ----------------------------- | --------------------- | --------------------------- |
+| Videos `.MOV`                 | `data/raw/`           | dataset                     |
+| Modelo SAM 3 (`sam3.pt` + HF) | `assets/sam3/`        | segmentación                |
+| YOLO afinado `best.pt`        | `assets/yolo/best.pt` | detector `yolo_sam3`        |
+| `.env`                        | raíz                  | `CONFIG_FILENAME`, secretos |
 
 > La inferencia requiere GPU. Todo lo que no llama a SAM 3 (rutas, conteo de frames,
 > selección del dataset, **post-proceso CPU** si hay un tracking JSON) corre en cualquier
@@ -308,6 +350,19 @@ broadcast layout 2. La salida destacada es el **video de espectador** en
 `outputs/eventos/<clip>/<clip>_broadcast.mp4`. Las etapas de homografía/eventos/broadcast
 solo corren en **cámara superior** (`--vista superior`, por defecto); en un clip genérico el
 hub corre solo el pipeline base.
+
+**El hub en acción:** el modo interactivo guía la elección de piezas y, al terminar, reporta
+dónde quedó cada artefacto sin mover nada.
+
+<!-- TODO(capturas): generar y reemplazar estos placeholders.
+     - main_prompt.png  -> fase interactiva (questionary/rich); se captura en local,
+       sale antes de cargar SAM 3, no requiere GPU.
+     - main_reporte.png -> tabla rich del reporte final de artefactos; se captura de
+       una corrida real en el pod. -->
+
+| Selección interactiva de piezas | Reporte final de artefactos |
+| ------------------------------- | --------------------------- |
+| ![Hub — prompt interactivo](assets/readme/png/main_prompt.png) | ![Hub — reporte de artefactos](assets/readme/png/main_reporte.png) |
 
 **Regenerar los visuales de este README:**
 
