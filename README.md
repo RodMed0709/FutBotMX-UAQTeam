@@ -279,7 +279,7 @@ reproducción aislada en el pod GPU.
 ### Modo A — Local (venv o conda `futbot26`, Python 3.11)
 
 ```bash
-git clone <url_del_repositorio>
+git clone https://github.com/RodMed0709/FutBotMX-UAQTeam.git
 cd futbot
 
 # Entorno aislado, Python 3.11. Torch va aparte según el destino:
