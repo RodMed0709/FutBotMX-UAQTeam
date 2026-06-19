@@ -1,0 +1,50 @@
+# ===================================================
+# docker-compose.yml - Proyecto Copa FutBotMX (env_setup)
+#
+# Las rutas relativas se resuelven respecto a ESTE archivo (docker/).
+# La sustitucion de variables ${...} se lee del archivo .env indicado al
+# ejecutar el comando. Levanta desde la raiz del proyecto con:
+#
+#   docker compose --env-file .env -f docker/docker-compose.yml up --build
+#
+# Los datos pesados (videos en data/raw, modelo en assets/sam3) deben existir
+# como ARCHIVOS REALES en el repo; el bind-mount del workspace los lleva al
+# contenedor. Ya no se montan volumenes de datos por separado.
+# ===================================================
+
+services:
+  futbotmx26:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        CONTAINER_WORKSPACE_DIR: ${CONTAINER_WORKSPACE_DIR:-futbot}
+        # Para pods con GPU, descomenta y ajusta el indice de torch:
+        # TORCH_INDEX_URL: https://download.pytorch.org/whl/cu128
+    image: futbotmx26:latest
+    working_dir: /${CONTAINER_WORKSPACE_DIR:-futbot}
+    # Variables de entorno del contenedor (relativo a docker/ -> .env de la raiz).
+    env_file:
+      - ../.env
+    volumes:
+      # Workspace de la aplicacion (nombre configurable, no fijo en /app).
+      # Lleva TODO el repo, incluidos data/raw y assets/sam3 como dirs reales.
+      # No hay volumenes de datos por separado: la convencion es que los datos
+      # pesados viven como archivos reales bajo data/raw y assets/sam3 (ver el
+      # futuro script bootstrap_data). Asi data/raw es un dir real dentro del
+      # contenedor (sin symlinks que Docker tenga que resolver).
+      - ../:/${CONTAINER_WORKSPACE_DIR:-futbot}
+    stdin_open: true
+    tty: true
+    # Mantiene el contenedor vivo para ejecutar pruebas con `exec`.
+    # Los datos pesados llegan por el bind-mount del workspace (son archivos
+    # reales del repo); ya NO se crean symlinks ni se montan volumenes aparte.
+    command:
+      - sh
+      - -c
+      - exec tail -f /dev/null
+    ports:
+      - "8888:8888" # puerto para jupyter lab/notebooks
+    
+    # GPU (RunPod / NVIDIA local). Descomenta para exponer las GPUs:
+    # gpus: all

@@ -1,0 +1,9 @@
+# Solo versionar notebooks; ignorar imágenes/pesos/datos pesados
+*
+!*/
+!*.ipynb
+!*.py
+!.gitignore
+# nunca versionar los checkpoints de Jupyter (van al final: la última regla gana)
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/

@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="420" viewBox="0 0 1680 420" font-family="'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5A6B7B"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1680" height="420" fill="#ffffff"/>
+  <text x="840" y="46" text-anchor="middle" font-size="25" font-weight="700" fill="#2B3A4A">Arquitectura — pipeline de dos capas</text>
+
+  <!-- ===== Panel Capa A (GPU) ===== -->
+  <rect x="34" y="92" width="612" height="268" rx="14" fill="#EDF2F7" stroke="#B6C7D6" stroke-width="1.5"/>
+  <text x="58" y="126" font-size="18" font-weight="700" fill="#3E5C76">Capa A — Percepción</text>
+  <text x="58" y="148" font-size="13" font-weight="600" fill="#6E8198" letter-spacing="1">GPU</text>
+
+  <!-- video input icon -->
+  <rect x="74" y="206" width="92" height="70" rx="8" fill="#ffffff" stroke="#5B7C99" stroke-width="1.6"/>
+  <path d="M108,225 L108,257 L134,241 Z" fill="#5B7C99"/>
+  <text x="120" y="298" text-anchor="middle" font-size="14" fill="#41566B">video</text>
+
+  <!-- detector/segmenter -->
+  <rect x="200" y="200" width="200" height="82" rx="10" fill="#ffffff" stroke="#5B7C99" stroke-width="1.8"/>
+  <text x="300" y="236" text-anchor="middle" font-size="17" font-weight="600" fill="#2B3A4A">Detector /</text>
+  <text x="300" y="258" text-anchor="middle" font-size="17" font-weight="600" fill="#2B3A4A">Segmentador</text>
+  <text x="300" y="316" text-anchor="middle" font-size="13" fill="#7A8895">sam3_text · yolo_sam3</text>
+
+  <!-- tracker -->
+  <rect x="446" y="200" width="180" height="82" rx="10" fill="#ffffff" stroke="#5B7C99" stroke-width="1.8"/>
+  <text x="536" y="247" text-anchor="middle" font-size="17" font-weight="600" fill="#2B3A4A">Tracker</text>
+  <text x="536" y="316" text-anchor="middle" font-size="13" fill="#7A8895">bytetrack · botsort</text>
+
+  <!-- ===== Puente JSON ===== -->
+  <text x="760" y="148" text-anchor="middle" font-size="13" font-weight="600" fill="#9A7B33" letter-spacing="1">PUENTE</text>
+  <g>
+    <path d="M724,196 H788 L806,214 V296 H724 Z" fill="#FBFAF5" stroke="#6B7785" stroke-width="1.8"/>
+    <path d="M788,196 V214 H806 Z" fill="#E7E2D2" stroke="#6B7785" stroke-width="1.8"/>
+    <line x1="738" y1="232" x2="792" y2="232" stroke="#B7BCC4" stroke-width="2"/>
+    <line x1="738" y1="250" x2="792" y2="250" stroke="#B7BCC4" stroke-width="2"/>
+    <line x1="738" y1="268" x2="775" y2="268" stroke="#B7BCC4" stroke-width="2"/>
+    <text x="765" y="328" text-anchor="middle" font-size="15" font-weight="700" fill="#8A6D2E">JSON</text>
+  </g>
+
+  <!-- ===== Panel Capa B (CPU) ===== -->
+  <rect x="872" y="92" width="774" height="268" rx="14" fill="#F6F1E7" stroke="#DECFA9" stroke-width="1.5"/>
+  <text x="896" y="126" font-size="18" font-weight="700" fill="#8A6D2E">Capa B — Análisis</text>
+  <text x="896" y="148" font-size="13" font-weight="600" fill="#A98A4B" letter-spacing="1">CPU</text>
+
+  <!-- homografía -->
+  <rect x="892" y="200" width="160" height="82" rx="10" fill="#ffffff" stroke="#A98A4B" stroke-width="1.8"/>
+  <text x="972" y="247" text-anchor="middle" font-size="17" font-weight="600" fill="#2B3A4A">Homografía</text>
+  <text x="972" y="316" text-anchor="middle" font-size="13" fill="#7A8895">líneas · masks</text>
+
+  <!-- análisis métrico -->
+  <rect x="1078" y="200" width="200" height="82" rx="10" fill="#ffffff" stroke="#A98A4B" stroke-width="1.8"/>
+  <text x="1178" y="236" text-anchor="middle" font-size="17" font-weight="600" fill="#2B3A4A">Análisis métrico</text>
+  <text x="1178" y="258" text-anchor="middle" font-size="17" font-weight="600" fill="#2B3A4A">espacial</text>
+  <text x="1178" y="316" text-anchor="middle" font-size="13" fill="#7A8895">cm · velocidad · zonas</text>
+
+  <!-- motor de eventos -->
+  <rect x="1304" y="200" width="170" height="82" rx="10" fill="#ffffff" stroke="#A98A4B" stroke-width="1.8"/>
+  <text x="1389" y="236" text-anchor="middle" font-size="17" font-weight="600" fill="#2B3A4A">Motor de</text>
+  <text x="1389" y="258" text-anchor="middle" font-size="17" font-weight="600" fill="#2B3A4A">eventos</text>
+  <text x="1389" y="316" text-anchor="middle" font-size="13" fill="#7A8895">gol · posesión</text>
+
+  <!-- broadcast video output -->
+  <rect x="1500" y="200" width="130" height="82" rx="10" fill="#ffffff" stroke="#A98A4B" stroke-width="1.8"/>
+  <rect x="1521" y="216" width="58" height="38" rx="4" fill="#F6F1E7" stroke="#A98A4B" stroke-width="1.4"/>
+  <path d="M1543,225 L1543,245 L1559,235 Z" fill="#A98A4B"/>
+  <text x="1565" y="272" text-anchor="middle" font-size="13" font-weight="600" fill="#2B3A4A">broadcast</text>
+  <text x="1565" y="316" text-anchor="middle" font-size="13" fill="#7A8895">video</text>
+
+  <!-- ===== flechas (ortogonales) ===== -->
+  <g stroke="#5A6B7B" stroke-width="2.2" fill="none" marker-end="url(#arrow)">
+    <line x1="166" y1="241" x2="198" y2="241"/>
+    <line x1="400" y1="241" x2="444" y2="241"/>
+    <line x1="626" y1="241" x2="722" y2="241"/>
+    <line x1="808" y1="241" x2="890" y2="241"/>
+    <line x1="1052" y1="241" x2="1076" y2="241"/>
+    <line x1="1278" y1="241" x2="1302" y2="241"/>
+    <line x1="1474" y1="241" x2="1498" y2="241"/>
+  </g>
+</svg>

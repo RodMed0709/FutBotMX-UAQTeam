@@ -1,0 +1,18 @@
+FutBot MX 2026 — UAQ Team
+Copyright (C) 2026 UAQ Team (Rodrigo Medellín Robles, Leonardo Daniel Villanueva Medina) — Copa FutBotMX 2026
+
+This program is free software: you can redistribute it and/or modify it under the
+terms of the GNU Affero General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License (file LICENSE) for
+more details. If not, see <https://www.gnu.org/licenses/>.
+
+--------------------------------------------------------------------------------
+Third-party components (used under their own licenses; see README §8):
+  - Ultralytics YOLO ............ AGPL-3.0
+  - Meta SAM 3 .................. Meta SAM License (source-available, use restrictions)
+  - Roboflow Supervision / trackers (ByteTrack, BoT-SORT) ... MIT
+  - Hugging Face Transformers ... Apache-2.0
