@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1560" height="840" viewBox="0 0 1560 840" font-family="'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <marker id="arrowB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7C6A45"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="1560" height="840" fill="#ffffff"/>
+  <text x="780" y="44" text-anchor="middle" font-size="23" font-weight="700" fill="#2B3A4A">Capa B — Post-proceso (CPU, cámara superior)</text>
+  <text x="780" y="70" text-anchor="middle" font-size="15" fill="#9A8455">homografía → análisis métrico → eventos → broadcast</text>
+
+  <!-- panel -->
+  <rect x="40" y="92" width="1480" height="724" rx="16" fill="#F6F1E7" stroke="#DECFA9" stroke-width="1.5"/>
+
+  <!-- tracking JSON (entrada de Capa A) -->
+  <rect x="690" y="116" width="180" height="56" rx="9" fill="#EDF2F7" stroke="#5B7C99" stroke-width="1.8"/>
+  <text x="780" y="140" text-anchor="middle" font-size="15" font-weight="700" fill="#2B3A4A">tracking JSON</text>
+  <text x="780" y="160" text-anchor="middle" font-size="12" fill="#41566B">(de la Capa A)</text>
+
+  <!-- HOMOGRAFÍA (base compartida) -->
+  <rect x="590" y="212" width="380" height="86" rx="10" fill="#F9F4EA" stroke="#A98A4B" stroke-width="2.2"/>
+  <text x="780" y="244" text-anchor="middle" font-size="16" font-weight="700" fill="#2B3A4A">HOMOGRAFÍA <tspan font-size="12" font-weight="600" fill="#A9772E">· intercambiable (flag)</tspan></text>
+  <text x="780" y="268" text-anchor="middle" font-size="13" fill="#8A7A5A">"lines" (consolidada)</text>
+  <text x="780" y="286" text-anchor="middle" font-size="13" fill="#8A7A5A">"masks" (legacy)</text>
+  <text x="990" y="240" font-size="13" font-style="italic" fill="#8A6D2E">compute_metric_positions(...)</text>
+  <text x="990" y="260" font-size="13" font-style="italic" fill="#8A6D2E">base compartida del post-proceso</text>
+
+  <text x="780" y="338" text-anchor="middle" font-size="13" fill="#7A6E55">xy_cm por frame / obj_id  +  H por frame</text>
+
+  <!-- ===== fan-out ===== -->
+  <!-- 1) estimador de estado -->
+  <rect x="90" y="400" width="300" height="162" rx="10" fill="#ffffff" stroke="#A98A4B" stroke-width="1.8"/>
+  <text x="240" y="430" text-anchor="middle" font-size="15" font-weight="700" fill="#2B3A4A">ESTIMADOR DE ESTADO</text>
+  <text x="240" y="450" text-anchor="middle" font-size="15" font-weight="700" fill="#2B3A4A">/ CINEMÁTICA</text>
+  <text x="240" y="486" text-anchor="middle" font-size="13" fill="#7A8895">dif. finitas (T4)</text>
+  <text x="240" y="508" text-anchor="middle" font-size="13" fill="#7A8895">Kalman CV (fase_6, activo)</text>
+  <text x="240" y="530" text-anchor="middle" font-size="13" fill="#7A8895">suaviza + oclusión</text>
+
+  <!-- 2) zonas -->
+  <rect x="450" y="400" width="300" height="162" rx="10" fill="#ffffff" stroke="#A98A4B" stroke-width="1.8"/>
+  <text x="600" y="440" text-anchor="middle" font-size="15" font-weight="700" fill="#2B3A4A">ZONAS</text>
+  <text x="600" y="476" text-anchor="middle" font-size="13" fill="#7A8895">mitades / tercios</text>
+
+  <!-- 3) eventos -->
+  <rect x="810" y="400" width="300" height="162" rx="10" fill="#ffffff" stroke="#A98A4B" stroke-width="1.8"/>
+  <text x="960" y="430" text-anchor="middle" font-size="15" font-weight="700" fill="#2B3A4A">EVENTOS</text>
+  <text x="960" y="464" text-anchor="middle" font-size="13" fill="#7A8895">shot_vs_goal</text>
+  <text x="960" y="486" text-anchor="middle" font-size="13" fill="#7A8895">goal_geometric</text>
+  <text x="960" y="508" text-anchor="middle" font-size="13" fill="#7A8895">possession</text>
+  <text x="960" y="530" text-anchor="middle" font-size="13" fill="#7A8895">field_violations</text>
+
+  <!-- 4) heatmap -->
+  <rect x="1170" y="400" width="300" height="162" rx="10" fill="#ffffff" stroke="#A98A4B" stroke-width="1.8"/>
+  <text x="1320" y="440" text-anchor="middle" font-size="15" font-weight="700" fill="#2B3A4A">HEATMAP</text>
+  <text x="1320" y="476" text-anchor="middle" font-size="13" fill="#7A8895">ocupación (cm)</text>
+
+  <!-- ===== entregable ===== -->
+  <rect x="530" y="648" width="500" height="106" rx="10" fill="#F2E6C8" stroke="#A98A4B" stroke-width="2.6"/>
+  <text x="780" y="682" text-anchor="middle" font-size="17" font-weight="700" fill="#2B3A4A">event_broadcast_overlay <tspan font-size="12" fill="#A9772E">— EL ENTREGABLE</tspan></text>
+  <text x="780" y="708" text-anchor="middle" font-size="13" fill="#7A6E55">marcador · banner de gol · posesión · minimapa cenital</text>
+  <text x="780" y="728" text-anchor="middle" font-size="13" fill="#7A6E55">heatmap · homografía embebida</text>
+
+  <!-- ===== conectores ===== -->
+  <g stroke="#7C6A45" stroke-width="2.2" fill="none">
+    <line x1="780" y1="172" x2="780" y2="210" marker-end="url(#arrowB)"/>
+    <!-- bus de reparto -->
+    <path d="M780,298 V366"/>
+    <path d="M240,366 H1320"/>
+    <line x1="240" y1="366" x2="240" y2="398" marker-end="url(#arrowB)"/>
+    <line x1="600" y1="366" x2="600" y2="398" marker-end="url(#arrowB)"/>
+    <line x1="960" y1="366" x2="960" y2="398" marker-end="url(#arrowB)"/>
+    <line x1="1320" y1="366" x2="1320" y2="398" marker-end="url(#arrowB)"/>
+    <!-- bus de convergencia -->
+    <path d="M240,562 V610"/>
+    <path d="M600,562 V610"/>
+    <path d="M960,562 V610"/>
+    <path d="M1320,562 V610"/>
+    <path d="M240,610 H1320"/>
+    <line x1="780" y1="610" x2="780" y2="646" marker-end="url(#arrowB)"/>
+  </g>
+</svg>
