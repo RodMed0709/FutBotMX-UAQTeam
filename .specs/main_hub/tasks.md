@@ -146,3 +146,15 @@ T0 → T1 → T2 → T3 → T4 → T5 → T6 → T7 → T8 → T9 → T10 → T1
 - CA-6: broadcast con clip crudo (sin máscaras).
 - CA-7: `--vista generica` omite homografía/eventos/broadcast; `--vista superior` sobre
   clip no-superior omite por homografía degradada (con aviso).
+
+## Estado de validación (cierre 2026-06-18)
+**VALIDADO end-to-end en POD (con GPU).** Las corridas reales de `main.py` en el pod
+produjeron los demos y las capturas de la sección 7 del README. Mapeo CA → evidencia:
+- CA-1 (interactivo detector→tracker→vista): `assets/readme/png/main_{detector,tracker,ovarlay}.png`.
+- CA-2 (`--default`): `assets/readme/png/main_run_example_deafult_vista_generica.png`.
+- CA-3 (`--overwrite` rehace: `assets/readme/png/main_output.png`; relanzar sin flags
+  reporta "reusado"/no re-infiere: confirmado en pantalla por el responsable).
+- CA-5 (reporte de rutas nativas): `assets/readme/png/main_output.png`.
+- CA-6 (broadcast con clip crudo): GIFs `assets/readme/gifs/broadcast_IMG_9933_*.gif`.
+- CA-7 (genérica omite cámara superior): captura `--default` vista genérica.
+Punto cerrado: el smoke local (sin GPU) + estas corridas reales cubren todos los CA.
