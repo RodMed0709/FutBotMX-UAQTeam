@@ -193,9 +193,7 @@ exactitud llegará con el ground-truth (ver §«Lo que falta»).
 
 ## 4. Material audiovisual
 
-- 🎥 **Video demo (máx. 2 min):** _[enlace pendiente]_ — muestra la vista original junto al
-  resultado segmentado/narrativo (el broadcast superpone segmentación, tracking y
-  analítica con explicación visual).
+- 🎥 **Video demo (máx. 2 min):** _[video muestra](https://drive.google.com/file/d/1vwUTtgsTAS8KYnwy9moA1P4oXdC8opXi/view?usp=drive_link)_
 - 📱 **Reel de Instagram (≥ 30 s):** _[enlace pendiente]_
 
 ---
@@ -237,7 +235,7 @@ reproducción aislada en el pod GPU.
 ### Modo A — Local (venv o conda `futbot26`, Python 3.11)
 
 ```bash
-git clone <url_del_repositorio>
+git clone https://github.com/RodMed0709/FutBotMX-UAQTeam.git
 cd futbot
 
 # Entorno aislado, Python 3.11. Torch va aparte según el destino:
