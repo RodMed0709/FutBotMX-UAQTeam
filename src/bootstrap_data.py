@@ -3,13 +3,16 @@
 Script de paquete (`python -m src.bootstrap_data`) que, declarativo sobre el
 **manifiesto versionado** ``assets/bootstrap_manifest.json``, verifica qué insumos
 pesados están presentes y descarga (con ``gdown``) los que falten del paquete elegido,
-dejando ``data/raw``/``assets/sam3``/``assets/yolo`` como dirs reales. También genera
-el ``.env`` desde ``.env.example`` si falta.
+dejando ``data/raw``/``assets/yolo`` como dirs reales. También genera el ``.env`` desde
+``.env.example`` si falta.
 
-Paquetes: ``all`` (dataset completo + pesos) y ``demo`` (clips + JSON con ``rle`` +
-pesos; autocontenido para correr la Capa B en local sin GPU). El dataset de la
-convocatoria se marca ``manual`` (excede el tope de ``gdown.download_folder``): solo se
-verifica presencia y se imprimen instrucciones.
+Paquetes: ``all`` (dataset completo + YOLO afinado) y ``demo`` (clips + JSON con ``rle``
++ YOLO; autocontenido para correr la Capa B en local sin GPU). Dos insumos se marcan
+``manual`` (no se descargan; solo se verifica presencia y se imprimen instrucciones):
+el **dataset de la convocatoria** (excede el tope de ``gdown.download_folder``) y
+**SAM 3**, que **no se redistribuye** (Meta SAM License, modelo *gated*): el usuario lo
+baja del Hugging Face oficial de Meta —aceptando su licencia— y lo coloca en
+``assets/sam3``. El demo no necesita SAM 3.
 
 Este módulo expone la **lógica pura** (tarea T3): lectura/filtrado del manifiesto,
 verificación de presencia, normalización de IDs de Drive y generación del ``.env``. La
@@ -244,10 +247,9 @@ def run_bootstrap(
         if is_present(rec, project_root):
             report.outcomes.append(ResourceOutcome(nombre, destino, "presente"))
         elif is_manual(rec):
+            detalle = rec.get("nota") or rec.get("fuente") or rec.get("drive_id", "")
             report.outcomes.append(
-                ResourceOutcome(
-                    nombre, destino, "manual", f"descarga manual: {rec['drive_id']}"
-                )
+                ResourceOutcome(nombre, destino, "manual", detalle)
             )
         elif dry_run:
             report.outcomes.append(
@@ -313,11 +315,12 @@ def print_report(report: BootstrapReport, console) -> None:
     manuales = [o for o in report.outcomes if o.estado == "manual"]
     if manuales:
         console.print(
-            "\n[yellow]Descarga manual pendiente[/] (excede el tope de gdown). "
-            "Baja estas carpetas del Drive de la convocatoria a su destino:"
+            "\n[yellow]Descarga manual pendiente[/] (colócala tú en su ruta):"
         )
         for o in manuales:
-            console.print(f"  • {o.destino}  ←  {o.detalle.split(': ', 1)[-1]}")
+            console.print(f"  • [bold]{o.destino}[/]")
+            if o.detalle:
+                console.print(f"      {o.detalle}")
 
     errores = [o for o in report.outcomes if o.estado == "error"]
     if errores:

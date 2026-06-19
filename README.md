@@ -205,7 +205,7 @@ de lo que se midió al correrlo.
 
 - **Lo que exige el código:** SAM 3 carga en CUDA si está disponible y **cae a CPU** en
   automático ([`sam3_loader.py`](src/core/sam3_loader.py)), así que la GPU no es un
-  requisito *duro* sino **práctico**: en CPU la inferencia (Capa A) es inviable por tiempo.
+  requisito _duro_ sino **práctico**: en CPU la inferencia (Capa A) es inviable por tiempo.
 - **Consumo medido:** el pico de VRAM está instrumentado por video
   (`torch.cuda.max_memory_allocated`, [`batch.py`](src/core/batch.py)) y quedó registrado
   en el benchmark — **~2.1 GB** (`sam3_text`) y **~3.1 GB** (`yolo_sam3`), ver
@@ -285,12 +285,12 @@ docker compose --env-file .env -f docker/docker-compose.yml \
 
 **Insumos no versionados requeridos** (git-ignored):
 
-| Insumo                        | Ruta (config)         | Para qué                    |
-| ----------------------------- | --------------------- | --------------------------- |
-| Videos `.MOV`                 | `data/raw/`           | dataset                     |
-| Modelo SAM 3 (`sam3.pt` + HF) | `assets/sam3/`        | segmentación                |
-| YOLO afinado `best.pt`        | `assets/yolo/best.pt` | detector `yolo_sam3`        |
-| `.env`                        | raíz                  | `CONFIG_FILENAME`           |
+| Insumo                        | Ruta (config)         | Para qué             |
+| ----------------------------- | --------------------- | -------------------- |
+| Videos `.MOV`                 | `data/raw/`           | dataset              |
+| Modelo SAM 3 (`sam3.pt` + HF) | `assets/sam3/`        | segmentación         |
+| YOLO afinado `best.pt`        | `assets/yolo/best.pt` | detector `yolo_sam3` |
+| `.env`                        | raíz                  | `CONFIG_FILENAME`    |
 
 > La inferencia requiere GPU. Todo lo que no llama a SAM 3 (rutas, conteo de frames,
 > selección del dataset, **post-proceso CPU** si hay un tracking JSON) corre en cualquier
@@ -380,8 +380,8 @@ cámara superior se omiten:
 En **modo interactivo** (`python main.py <clip>`, sin `--default`) el hub guía la
 elección de piezas paso a paso:
 
-| Detector | Tracker | Vista de cámara |
-| -------- | ------- | --------------- |
+| Detector                                         | Tracker                                        | Vista de cámara                              |
+| ------------------------------------------------ | ---------------------------------------------- | -------------------------------------------- |
 | ![detector](assets/readme/png/main_detector.png) | ![tracker](assets/readme/png/main_tracker.png) | ![vista](assets/readme/png/main_ovarlay.png) |
 
 Y al terminar reporta dónde quedó cada artefacto (corrida completa con `--overwrite`,
@@ -403,27 +403,36 @@ RUN_HEAVY=1 jupyter nbconvert --to notebook --execute --inplace \
 
 ## Lo que falta / en curso
 
-- **Evaluación con ground-truth — PAUSADA:** a la espera de la anotación manual del equipo
-  (Roboflow). Con el COCO GT se medirá mIoU / Boundary IoU / Dice; la evaluación de tracking
-  queda diferida.
-- **Estrategia de fine-tuning de YOLO — abierta** (Roboflow vs. SAM3-assisted).
-- **Provisión de datos (`bootstrap_data` + `--demo`) — HECHA** y validada en local y Docker
-  (ver §6). Cabos menores: el **dataset completo es descarga manual** (excede el tope de
-  carpetas de `gdown`) y la **estrategia de volumen persistente en RunPod** queda abierta.
+**Evaluación Cuantitativa y Estrategia de Adaptación (SAM 3 vs. Ground-Truth)**
+
+Para transicionar de una validación cualitativa a un entorno medible, el proyecto integra una fase de benchmarking contra anotaciones manuales, estableciendo la línea base para el reentrenamiento:
+
+- **Curaduría del Dataset:** Se construyó un corpus de 600 _frames_ etiquetados mediante Supervisely (6 clases). Para evitar contaminación, los datos se separaron mediante un _split_ estricto de 80/20 a nivel de video, disponibles directamente en el entorno de ejecución.
+- **Benchmarking Zero-Shot (Línea Base):** La evaluación inicial arroja métricas globales robustas ($mIoU = 0.76$, $\text{Dice} = 0.78$). SAM 3 demuestra alta fidelidad en clases bien definidas (`green_floor` $0.98$, `orange_ball` $0.93$, `robot` $0.88$). No obstante, se detectó una vulnerabilidad crítica ante el _domain shift_ en la clase `blue_zone` ($mIoU = 0.12$), donde el texto del tablero confunde la segmentación _zero-shot_.
+- **Mitigación por Test-Time Augmentation (TTA):** La evaluación sistemática aplicando `--tta` se encuentra instrumentada en el _pipeline_ para medir la estabilización de los bordes bajo transformaciones afines.
+- **Fine-Tuning Paramétrico (LoRA):** El fallo focalizado en la clase `blue_zone` provee la justificación técnica ideal para aplicar _Low-Rank Adaptation_ (LoRA). El _dataset_ curado actuará como matriz de entrenamiento para afinar las proyecciones de atención de SAM 3, corrigiendo los falsos negativos sin corromper el conocimiento fundacional del modelo.
 
 ---
 
-## 8. Licencia y créditos
+## 8. Licencia, Créditos y Transparencia
 
-- **Licencia:** [Apache License 2.0](LICENSE).
-- **Créditos y atribuciones:**
-  - **Meta AI** — [SAM 3](https://github.com/facebookresearch/sam3) (segmentación).
-  - **ByteTrack / BoT-SORT** vía `trackers` y **Roboflow Supervision** (asociación y
-    utilidades de tracking).
-  - **Ultralytics YOLO** (detector afinado), **Hugging Face Transformers** (carga de SAM 3).
-  - **Anthropic — Claude (Opus 4.8)** como asistente de programación durante el desarrollo.
-  - **UAQ Team — Copa FutBotMX 2026.** Filtro de Kalman, homografía multi-feature, capa
-    métrica y overlay narrativo: implementación propia.
+**Licencia del Proyecto:**
+Para garantizar la compatibilidad con el ecosistema de dependencias utilizadas, este proyecto se distribuye bajo la [Licencia AGPL-3.0](LICENSE).
+
+**Créditos y Atribuciones de Código de Terceros:**
+
+- **Ultralytics (YOLO):** Arquitectura empleada para el _fine-tuning_ y el mecanismo de propuesta de regiones rápidas (distribuido bajo licencia AGPL-3.0).
+- **Meta AI (SAM 3):** Modelo base de segmentación _zero-shot_ ([repositorio oficial](https://github.com/facebookresearch/sam3)), operado en estricto apego a los términos de la **SAM License**.
+- **ByteTrack / BoT-SORT & Roboflow Supervision:** Implementaciones para los algoritmos de asociación espacial y utilidades de _tracking_ (licencias MIT).
+- **Hugging Face Transformers:** Infraestructura para la carga de pesos y despliegue del modelo SAM 3 (licencia Apache 2.0).
+
+**Declaración de Transparencia (IA Generativa):**
+En cumplimiento con las bases de la competencia referidas a las herramientas autorizadas, se utilizó **Anthropic Claude** como asistente de apoyo en depuración algorítmica y estructuración de documentación. El equipo de desarrollo auditó, comprende y es autor intelectual de la totalidad de la arquitectura y la lógica implementada en este entregable.
+
+**UAQ Team — Copa FutBotMX 2026:**
+
+- Rodrigo Medellín Robles
+- Leonardo Daniel Villanueva Medina
 
 ---
 

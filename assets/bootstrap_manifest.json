@@ -73,10 +73,13 @@
     {
       "nombre": "sam3_weights",
       "paquetes": ["all", "demo"],
+      "_comment": "SAM 3 NO se redistribuye. La Meta SAM License es source-available con restricciones de uso y exige distribuir los SAM Materials bajo su propia licencia, por eso el bootstrap NO lo descarga: solo verifica presencia y, si falta, imprime las instrucciones. Descarga MANUAL desde el Hugging Face oficial de Meta (modelo gated: inicia sesión y acepta/solicita acceso a la licencia) y coloca el modelo en 'assets/sam3'. El demo NO necesita SAM 3 (la Capa B corre con el tracking JSON).",
       "recursos": [
         {
           "tipo": "dir",
-          "drive_id": "https://drive.google.com/drive/folders/1A8lutXwjmBofLwIO4OIZTuTaFXjPWrLs?usp=drive_link",
+          "manual": true,
+          "fuente": "https://huggingface.co/facebook/sam3",
+          "nota": "SAM 3 no se redistribuye (Meta SAM License, modelo gated). Descárgalo del Hugging Face oficial de Meta —inicia sesión y acepta/solicita acceso a su licencia— y coloca los archivos del modelo en 'assets/sam3'. Solo se necesita para inferencia desde cero (GPU); el demo no lo requiere.",
           "destino": "assets/sam3"
         }
       ]

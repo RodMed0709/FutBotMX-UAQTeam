@@ -231,16 +231,21 @@ Cross-cutting facts worth knowing before editing:
   `sys.path.insert(0, str(PROJECT_ROOT))` — remove it and keep the direct
   `import src...`. Should be done as its own atomic SDD task. See
   `.specs/editable_module/tasks.md` → "Trabajo futuro".
-- **`bootstrap_data` (data provisioning script) — DONE.** Implemented as the SDD
-  tasks `bootstrap_data` (`src/bootstrap_data.py`, interactive menu over the versioned
-  `assets/bootstrap_manifest.json`, gdown download, `.env` generation) and
-  `main_demo_flag` (the `--demo` hub flag). The demo package (clips + tracking JSON with
-  `rle` + weights) is self-contained and the full demo flow was **validated end-to-end
-  in local conda and Docker** (CPU, no GPU). A `.dockerignore` keeps the build context
-  lean (~22 GB → ~52 MB; data via bind-mount). Remaining minor loose ends (to tidy next
-  session): the convocatoria **dataset is manual** (`manual: true`, exceeds gdown's
-  folder limit), and the **RunPod** persistent-volume placement strategy is still
-  undecided.
+- **RunPod persistent-volume placement — undecided.** Docker/compose runs on RunPod, but
+  where the heavy data (`data/raw`, `assets/sam3`, `assets/yolo`) lives on a persistent
+  volume is still open.
+- **Audiovisual deliverables — links pending.** The demo video + IG reel need publishing
+  and a link in README §4/§8; the reel/mosaic scripts live in
+  `notebooks/fase_7_visuales/` (on a **local branch**, not yet merged).
+
+**Recently closed (no longer TODO):** `bootstrap_data` + `main_demo_flag` (`--demo`),
+validated end-to-end in local conda and Docker (CPU); `main_hub` (`main.py`, validated
+end-to-end on the pod); README ASCII diagrams → vector images
+(`assets/readme/diagrams/*.svg`); relicensed to **AGPL-3.0** (Ultralytics-AGPL
+compatibility). **SAM 3 is NOT redistributed**: it is `manual` in
+`assets/bootstrap_manifest.json` (Meta SAM License, gated Hugging Face download placed in
+`assets/sam3`), so the demo package ships clips + tracking JSON (`rle`) + **YOLO** weights
+only — the convocatoria **dataset is also manual** (exceeds gdown's folder limit).
 
 ## Spec-Driven Development workflow (mandatory)
 
