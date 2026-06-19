@@ -235,9 +235,7 @@ exactitud llegará con el ground-truth (ver §«Lo que falta»).
 
 ## 4. Material audiovisual
 
-- 🎥 **Video demo (máx. 2 min):** _[enlace pendiente]_ — muestra la vista original junto al
-  resultado segmentado/narrativo (el broadcast superpone segmentación, tracking y
-  analítica con explicación visual).
+- 🎥 **Video demo (máx. 2 min):** _[video muestra](https://drive.google.com/file/d/1vwUTtgsTAS8KYnwy9moA1P4oXdC8opXi/view?usp=drive_link)_
 - 📱 **Reel de Instagram (≥ 30 s):** _[enlace pendiente]_
 
 ---
