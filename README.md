@@ -18,7 +18,14 @@ Este sistema procesa videos en crudo para extraer métricas deportivas y generar
 
 ---
 
-## 1. Descripción y arquitectura de la solución
+## 1. Material audiovisual
+
+- 🎥 **Video demo (máx. 2 min):** _[video muestra](https://drive.google.com/file/d/1QYHizWE4icO9Ljw2DyA4MAovXH0ioH5L/view?usp=sharing)_
+- 📱 **Reel de Instagram (≥ 30 s):** _[enlace pendiente]_
+
+---
+
+## 2. Descripción y arquitectura de la solución
 
 El _pipeline_ ha sido diseñado bajo una arquitectura modular desacoplada para optimizar los recursos computacionales y facilitar la experimentación. Se divide en dos capas principales:
 
@@ -76,7 +83,7 @@ finitas y elimina picos de velocidad imposibles (p. ej. v_max de balón 196.3 �
 
 ---
 
-## 2. Metodología
+## 3. Metodología
 
 ### Arquitectura del pipeline (flujo de datos)
 
@@ -126,9 +133,9 @@ Para garantizar la mantenibilidad, escalabilidad y trazabilidad del código, el 
 
 ---
 
-## 3. Resultados obtenidos y métricas
+## 4. Resultados obtenidos y métricas
 
-### 3.1 Demostración visual — pipeline base (cualquier clip)
+### 4.1 Demostración visual — pipeline base (cualquier clip)
 
 Detección + segmentación por clase y tracking con identidad estable, sobre clips genéricos
 (< 1 min, no cámara superior):
@@ -137,7 +144,7 @@ Detección + segmentación por clase y tracking con identidad estable, sobre cli
 | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
 | ![segmentación](assets/readme/png/segmentacion_video-714_singular_display.png) | ![tracking](assets/readme/gifs/tracking_video-714_singular_display.gif) |
 
-### 3.2 Análisis avanzado — cámara superior (el entregable)
+### 4.2 Análisis avanzado — cámara superior (el entregable)
 
 Video narrativo, mapas de calor dinámicos, posesión con métricas temporales y posiciones en
 cm. Ejemplos sobre dos partidos distintos (`IMG_9933`, `IMG_9938`):
@@ -153,7 +160,7 @@ cm. Ejemplos sobre dos partidos distintos (`IMG_9933`, `IMG_9938`):
 Tablas Kalman completas en [`assets/fase6/tables/`](assets/fase6/tables/): la varianza de
 aceleración baja **98–100 %** y se rellenan los huecos de oclusión sin falsos goles.
 
-### 3.3 Desempeño cuantitativo — benchmark sin ground-truth
+### 4.3 Desempeño cuantitativo — benchmark sin ground-truth
 
 Ante la ausencia actual de un conjunto de datos etiquetado manualmente, la evaluación no reporta métricas supervisadas tradicionales (como mAP, MOTA o mIoU). En su lugar, el _benchmark_ evalúa rigurosamente la **eficiencia computacional y la consistencia espacio-temporal**.
 
@@ -188,13 +195,6 @@ tiene la **menor fragmentación** (0.011) y `sam3_text+bytetrack` los **tracklet
 eso el 2×2). `mask_iou` ~0.92 en las 4 configs **apenas discrimina**
 ([métricas débiles](assets/benchmark/fase2_metricas_debiles.png), suplementarias). La
 exactitud llegará con el ground-truth (ver §«Lo que falta»).
-
----
-
-## 4. Material audiovisual
-
-- 🎥 **Video demo (máx. 2 min):** _[video muestra](https://drive.google.com/file/d/1vwUTtgsTAS8KYnwy9moA1P4oXdC8opXi/view?usp=drive_link)_
-- 📱 **Reel de Instagram (≥ 30 s):** _[enlace pendiente]_
 
 ---
 
