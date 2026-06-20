@@ -21,7 +21,7 @@ Este sistema procesa videos en crudo para extraer métricas deportivas y generar
 ## 1. Material audiovisual
 
 - 🎥 **Video demo (máx. 2 min):** _[video muestra](https://drive.google.com/file/d/1QYHizWE4icO9Ljw2DyA4MAovXH0ioH5L/view?usp=sharing)_
-- 📱 **Reel de Instagram (≥ 30 s):** _[enlace pendiente]_
+- 📱 **Reel de Instagram (≥ 30 s):** _[ver reel](https://www.instagram.com/reels/DZyxuIXN2De/)_
 
 ---
 
