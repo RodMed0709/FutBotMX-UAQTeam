@@ -40,6 +40,7 @@ detector ni tracker lo generó.
 | 09 | **Capa métrica** | posiciones en cm, velocidad/distancia, zonas, heatmap | [09_capa_metrica.md](09_capa_metrica.md) |
 | 10 | **Eventos** | goles, posesión, fueras/área, overlay narrativo (el entregable) | [10_eventos.md](10_eventos.md) |
 | 11 | **Kalman** | estimación de estado río abajo (oclusión + suavizado) | [11_kalman.md](11_kalman.md) |
+| 12 | **Evidencia de métricas (paper)** | scripts de medición que respaldan los números del paper (measurement-only) | [12_evidencia_metricas_paper.md](12_evidencia_metricas_paper.md) |
 
 ## Convenciones que cruzan todas las fases
 
