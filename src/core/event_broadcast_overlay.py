@@ -301,6 +301,8 @@ def render_broadcast_overlay(
     start_frame: int = 0,
     max_frames: int | None = None,
     draw_field_on_video: bool = True,
+    draw_boxes: bool = False,
+    box_labels: bool = True,
     progress: bool = True,
 ) -> BroadcastResult:
     """Renderiza el video de espectador. ``layout`` 1|2 (default 2); ``goal_source`` strict|geometric.
@@ -329,6 +331,11 @@ def render_broadcast_overlay(
         raise FileNotFoundError(f"no está el clip del partido: {clip}")
     fps = out_fps or get_video_fps(clip)
     by_frame = load_frame_objects(tracks_json)
+    # boxes opcionales (cajas+etiqueta por objeto sobre el video)
+    if draw_boxes:
+        import json as _json
+        from src.core.track_overlay import _color_map as _cmf, _label as _lblf, _text_color as _tcf
+        _cmap_boxes = _cmf(_json.loads(tracks_json.read_text(encoding="utf-8")))
 
     # --- precómputo de eventos (homografía una vez) ---
     degradado = False
@@ -389,6 +396,21 @@ def render_broadcast_overlay(
             # homografía embebida: reproyecta el campo sobre el video (a resolución completa)
             if not degradado and draw_field_on_video:
                 draw_field_overlay_on_frame(vid, metric.H_por_frame.get(fidx))
+            if draw_boxes:
+                for _o in by_frame.get(fidx, []):
+                    if _o.class_name != ROBOT_CLASS and _o.class_name not in BALL_CLASSES:
+                        continue
+                    _x, _y, _w, _h = (int(v) for v in _o.bbox)
+                    _rgb = _cmap_boxes.get(_o.class_name, (0, 255, 0))
+                    _bgr = (_rgb[2], _rgb[1], _rgb[0])
+                    cv2.rectangle(vid, (_x, _y), (_x + _w, _y + _h), _bgr, 2)
+                    if box_labels:
+                        _lab = _lblf(_o.class_name, _o.obj_id)
+                        (_tw, _th), _b = cv2.getTextSize(_lab, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+                        _yt = max(0, _y - _th - _b)
+                        cv2.rectangle(vid, (_x, _yt), (_x + _tw, _y), _bgr, -1)
+                        _tc = _tcf(_rgb)
+                        cv2.putText(vid, _lab, (_x, max(_th, _y - _b)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (_tc[2], _tc[1], _tc[0]), 2, cv2.LINE_AA)
             # marcador acumulado (fidx = índice del frame fuente, donde viven los eventos)
             ys = sum(1 for gf, z in goals if gf <= fidx and z == "yellow")
             bs = sum(1 for gf, z in goals if gf <= fidx and z == "blue")
