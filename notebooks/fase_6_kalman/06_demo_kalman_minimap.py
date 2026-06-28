@@ -25,7 +25,7 @@ from src.core.video_writer import open_video_writer
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cm_positions_lines import compute_cm_positions_lines  # noqa: E402
 
-REPO = Path("/workspace/FutBotMX-UAQTeam")
+REPO = Path(__file__).resolve().parents[2]  # raíz del repo (portable: pod o local)
 CD = REPO / "outputs/inference/fase5_clips/IMG_9933_5m30"
 TRACKS = CD / "IMG_9933_5m30.json"
 CLIP = CD / "IMG_9933_5m30.mp4"
@@ -163,10 +163,10 @@ def main() -> None:
             hm = cv2.cvtColor(render_heatmap(grid, HEAT_BIN, rotate=None), cv2.COLOR_BGR2RGB)
 
             cells = [_label(_fit(rgb, H), "Original"),
-                     _label(_fit(seg, H), "Segmentacion"),
+                     _label(_fit(seg, H), "Segmentation"),
                      _label(_fit(trk, H), "Tracking"),
-                     _label(_fit(mm, H), "Minimap homografia+Kalman"),
-                     _label(_fit(hm, H), "Heatmap (homografia)")]
+                     _label(_fit(mm, H), "Minimap (homography+Kalman)"),
+                     _label(_fit(hm, H), "Heatmap (homography)")]
             row = cv2.hconcat(cells)
 
             # --- barra de métricas (abajo, estilo del compa, datos del Kalman) ---
@@ -177,11 +177,11 @@ def main() -> None:
             cv2.putText(bar, f"Ball speed (Kalman): {ball_v:5.0f} cm/s   |   v_max: {vmax_ball:.0f} cm/s"
                         f"   |   goals: {n_goles}", (12, 34),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
-            cv2.putText(bar, "velocidad en cm/s via filtro de Kalman (cm-space) + homografia por lineas",
+            cv2.putText(bar, "speed in cm/s via Kalman filter (cm-space) + line-based homography",
                         (12, 66), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1, cv2.LINE_AA)
             if goal:
                 cv2.rectangle(bar, (0, 0), (row.shape[1] - 1, 83), (255, 40, 40), 5)
-                cv2.putText(bar, f"GOL - porteria {goal}", (row.shape[1] // 2 - 120, 52),
+                cv2.putText(bar, f"GOAL - {goal} goal", (row.shape[1] // 2 - 120, 52),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 60, 60), 3, cv2.LINE_AA)
             append(cv2.vconcat([row, bar]))
             n += 1; f += 1
