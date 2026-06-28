@@ -32,7 +32,7 @@ einops>=0.8
 
 # Tracking / detection utilities
 supervision>=0.22
-trackers
+trackers==2.4.0  # 2.5.0 sube un wheel roto (sin el paquete, solo dist-info); 2.4.0 trae ByteTrackTracker
 pycocotools>=2.0  # COCO-RLE (mascaras opcionales del entregable de inferencia; import perezoso)
 
 # Config + utilities
